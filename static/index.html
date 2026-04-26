@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inbox Forge · Email Summarizer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Gestalt + Apple HIG tokens (mirrored from workspace DESIGN.md)
+      tailwind.config = {
+        theme: {
+          fontFamily: {
+            sans: ['-apple-system','BlinkMacSystemFont','PingFang SC','Hiragino Kaku Gothic Pro','Segoe UI','Roboto','Helvetica Neue','Arial','sans-serif'],
+            display: ['ui-serif',"'New York'","'Iowan Old Style'",'Georgia',"'Times New Roman'",'serif'],
+            mono: ['SFMono-Medium','SF Mono','Menlo','Consolas','monospace'],
+          },
+          fontSize: {
+            '100': ['12px', { lineHeight: '1.5' }],
+            '200': ['14px', { lineHeight: '1.5' }],
+            '300': ['16px', { lineHeight: '1.6' }],
+            '400': ['20px', { lineHeight: '1.4' }],
+            '500': ['28px', { lineHeight: '1.25' }],
+            '600': ['36px', { lineHeight: '1.15' }],
+          },
+          fontWeight: { normal: '400', semibold: '600', bold: '700' },
+          extend: {
+            colors: {
+              pushpin: { 0:'#FFF7F7', 50:'#FFEBEB', 100:'#FFE0E0', 200:'#FCBBBB', 300:'#F47171', 400:'#EB4242', 450:'#E60023', 500:'#CC0000', 600:'#B60000', 700:'#9B0000' },
+              roboflow: { 50:'#F9F9F9', 100:'#F1F1F1', 200:'#E9E9E9', 300:'#CDCDCD', 400:'#A5A5A5', 500:'#767676', 600:'#4A4A4A', 700:'#2B2B2B', 800:'#191919' },
+              cosmicore: '#111111',
+              mochimalist: '#FFFFFF',
+            },
+            borderRadius: {
+              '100':'4px','200':'8px','300':'12px','400':'16px','500':'20px','600':'24px','700':'28px','800':'32px', pill:'999px',
+            },
+            spacing: {
+              '100':'4px','200':'8px','300':'12px','400':'16px','500':'20px','600':'24px','700':'28px','800':'32px','900':'36px','1000':'40px','1100':'44px','1200':'48px','1300':'52px','1400':'56px','1500':'60px','1600':'64px',
+            },
+            boxShadow: {
+              floating: '0 1px 2px rgba(17,17,17,0.04), 0 8px 24px rgba(17,17,17,0.06), inset 0 1px 0 rgba(255,255,255,0.6)',
+              raised:   '0 2px 4px rgba(17,17,17,0.06), 0 12px 32px rgba(17,17,17,0.08), inset 0 1px 0 rgba(255,255,255,0.7)',
+              lift:     '0 4px 8px rgba(17,17,17,0.08), 0 24px 48px rgba(17,17,17,0.10), inset 0 1px 0 rgba(255,255,255,0.7)',
+              glass:    '0 8px 32px rgba(17,17,17,0.06), inset 0 1px 0 rgba(255,255,255,0.8)',
+            },
+            transitionTimingFunction: { apple: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+            keyframes: {
+              fadeUp: { '0%':{opacity:'0',transform:'translateY(12px)'},'100%':{opacity:'1',transform:'translateY(0)'} },
+              shimmer: { '0%':{backgroundPosition:'-400px 0'},'100%':{backgroundPosition:'400px 0'} },
+            },
+            animation: {
+              fadeUp: 'fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1)',
+              shimmer: 'shimmer 1.4s linear infinite',
+            },
+          },
+        },
+      }
+    </script>
+    <style>
+        html, body { background: #FAFAF7; }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Kaku Gothic Pro", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          color: #111111;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+        }
+        .display-h1 {
+          font-size: clamp(40px, 6.5vw, 72px);
+          line-height: 1.05;
+          letter-spacing: -0.04em;
+          font-weight: 700;
+        }
+        .summary-box { font-size: 17px; line-height: 1.85; font-weight: 500; }
+        .skeleton {
+          background: linear-gradient(90deg, #F1F1F1 0%, #F9F9F9 40%, #F1F1F1 80%);
+          background-size: 800px 100%;
+        }
+        /* Subtle radial vignette for the page */
+        .page-bg::before {
+          content: '';
+          position: fixed; inset: 0; pointer-events: none; z-index: 0;
+          background:
+            radial-gradient(900px 500px at 85% -10%, rgba(230,0,35,0.05), transparent 60%),
+            radial-gradient(700px 500px at -10% 110%, rgba(17,17,17,0.04), transparent 60%);
+        }
+        .step-num {
+          font-family: ui-serif, "New York", "Iowan Old Style", Georgia, serif;
+          font-style: italic;
+        }
+        /* Custom select arrow */
+        select.tk-input {
+          appearance: none;
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%23767676' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+          background-repeat: no-repeat;
+          background-position: right 16px center;
+          padding-right: 40px;
+        }
+        /* Token-based input baseline */
+        .tk-input {
+          width: 100%;
+          background: #FFFFFF;
+          border: none;
+          box-shadow: 0 1px 2px rgba(17,17,17,0.04), inset 0 0 0 1px #E9E9E9;
+          border-radius: 16px;
+          padding: 12px 16px;
+          font-size: 14px;
+          color: #111111;
+          outline: none;
+          transition: box-shadow 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .tk-input::placeholder { color: #A5A5A5; }
+        .tk-input:focus { box-shadow: 0 1px 2px rgba(17,17,17,0.04), inset 0 0 0 1.5px #E60023, 0 0 0 4px rgba(230,0,35,0.12); }
+        .tk-input-pill { border-radius: 999px; padding-left: 20px; padding-right: 20px; }
+        textarea.tk-input { line-height: 1.7; resize: vertical; }
+    </style>
+</head>
+<body class="page-bg min-h-screen">
+
+<!-- ======================= AUTH (login/register) ======================= -->
+<div id="authView" class="hidden min-h-screen flex items-center justify-center px-400 relative z-10">
+    <div class="w-full max-w-md bg-mochimalist rounded-600 shadow-lift p-1000 animate-fadeUp">
+        <div class="flex items-center justify-between mb-700">
+            <div class="flex items-center gap-300">
+                <div class="w-1000 h-1000 rounded-300 bg-cosmicore flex items-center justify-center shadow-floating">
+                    <svg class="w-500 h-500 text-mochimalist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 7l8 5 8-5"/><rect x="4" y="5" width="16" height="14" rx="2"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-100 text-roboflow-500 tracking-widest uppercase">Inbox Forge</div>
+                    <h1 class="text-400 font-bold text-cosmicore mt-100" data-i18n-html="hero_brand"></h1>
+                </div>
+            </div>
+            <div class="flex p-100 bg-roboflow-100 rounded-pill text-100">
+                <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="en">EN</button>
+                <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="zh">中</button>
+            </div>
+        </div>
+
+        <p class="text-200 text-roboflow-500 mb-600" data-i18n="auth_subtitle"></p>
+
+        <div class="flex p-100 bg-roboflow-100 rounded-pill mb-500 text-200">
+            <button id="tabLogin" class="flex-1 py-200 px-400 rounded-pill bg-cosmicore text-mochimalist font-semibold transition-all duration-500 ease-apple" data-i18n="login"></button>
+            <button id="tabRegister" class="flex-1 py-200 px-400 rounded-pill text-roboflow-600 font-semibold transition-all duration-500 ease-apple" data-i18n="register"></button>
+        </div>
+
+        <form id="authForm" class="space-y-400">
+            <div>
+                <label class="block text-100 font-semibold text-roboflow-600 mb-200 tracking-wide" data-i18n="email_label"></label>
+                <input id="authEmail" type="email" required autocomplete="email" class="tk-input" placeholder="you@example.com">
+            </div>
+            <div>
+                <label class="block text-100 font-semibold text-roboflow-600 mb-200 tracking-wide" data-i18n-html="password_label"></label>
+                <input id="authPassword" type="password" required minlength="6" autocomplete="current-password" class="tk-input" placeholder="••••••••">
+            </div>
+            <button id="authSubmit" type="submit"
+                    class="w-full bg-cosmicore text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="login"></button>
+        </form>
+
+        <p class="text-100 text-roboflow-400 mt-600 text-center" data-i18n="auth_footnote"></p>
+    </div>
+</div>
+
+<!-- ======================= APP (post-login) ======================= -->
+<div id="appView" class="hidden relative z-10">
+
+    <!-- Top bar (frosted glass) -->
+    <div class="sticky top-0 z-30 backdrop-blur-xl bg-mochimalist/70 border-b border-roboflow-100/80">
+        <div class="max-w-5xl mx-auto px-600 py-400 flex items-center justify-between">
+            <div class="flex items-center gap-300">
+                <div class="w-800 h-800 rounded-200 bg-cosmicore flex items-center justify-center shadow-floating">
+                    <svg class="w-400 h-400 text-mochimalist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 7l8 5 8-5"/><rect x="4" y="5" width="16" height="14" rx="2"/>
+                    </svg>
+                </div>
+                <div>
+                    <div class="text-100 text-roboflow-500 tracking-widest uppercase leading-tight">Inbox Forge</div>
+                    <div class="text-200 font-semibold text-cosmicore leading-tight" data-i18n="brand_tagline"></div>
+                </div>
+            </div>
+            <div class="flex items-center gap-200 text-100">
+                <div class="flex p-100 bg-roboflow-100 rounded-pill text-100">
+                    <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="en">EN</button>
+                    <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="zh">中</button>
+                </div>
+                <span id="userEmailLabel" class="hidden md:inline text-roboflow-500 px-300 py-200 rounded-pill bg-roboflow-50"></span>
+                <button id="navList" class="px-400 py-200 rounded-pill text-roboflow-700 hover:bg-roboflow-100 font-semibold transition-all duration-500 ease-apple" data-i18n="nav_records"></button>
+                <button id="navHome" class="px-400 py-200 rounded-pill text-roboflow-700 hover:bg-roboflow-100 font-semibold transition-all duration-500 ease-apple hidden" data-i18n="nav_home"></button>
+                <button id="navDownload" class="px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="nav_download"></button>
+                <button id="logoutBtn" class="px-300 py-200 rounded-pill text-roboflow-500 hover:text-pushpin-450 hover:bg-pushpin-50 transition-all duration-500 ease-apple" data-i18n="logout"></button>
+            </div>
+        </div>
+    </div>
+
+    <div class="max-w-5xl mx-auto px-600 pt-700 pb-1200">
+
+        <!-- Hero -->
+        <div id="heroBlock" class="mb-700 animate-fadeUp">
+            <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold mb-300">AI · Email · Excel</div>
+            <h1 class="display-h1 text-cosmicore" data-i18n-html="hero_title"></h1>
+            <p class="mt-500 text-300 text-roboflow-600 max-w-xl" data-i18n="hero_sub"></p>
+        </div>
+
+        <!-- Health badge -->
+        <div id="healthBadge" class="hidden mb-500 px-500 py-400 rounded-400 bg-pushpin-50 text-pushpin-700 text-200 font-semibold shadow-floating"></div>
+
+        <!-- =============== HOME (upload + review) =============== -->
+        <div id="homeView">
+
+            <!-- Step indicator -->
+            <div id="stepBar" class="flex items-center gap-200 mb-500 text-100">
+                <span data-step="1" class="step-pill px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold" data-i18n="step1"></span>
+                <span class="h-100 w-600 bg-roboflow-200 rounded-pill"></span>
+                <span data-step="2" class="step-pill px-400 py-200 rounded-pill bg-mochimalist/80 backdrop-blur-md text-roboflow-500 font-semibold shadow-glass" data-i18n="step2"></span>
+                <span class="h-100 w-600 bg-roboflow-200 rounded-pill"></span>
+                <span data-step="3" class="step-pill px-400 py-200 rounded-pill bg-mochimalist/80 backdrop-blur-md text-roboflow-500 font-semibold shadow-glass" data-i18n="step3"></span>
+            </div>
+
+            <!-- Step 1: Upload -->
+            <div id="step1" class="bg-mochimalist rounded-600 shadow-floating p-700 mb-500 animate-fadeUp">
+                <div class="flex items-center gap-300 mb-500">
+                    <span class="step-num text-500 text-pushpin-450">01.</span>
+                    <h2 class="text-300 font-semibold text-cosmicore" data-i18n="upload_h"></h2>
+                </div>
+
+                <!-- Drop zone (multi-image) -->
+                <label class="block cursor-pointer">
+                    <div id="dropZone" class="rounded-500 p-700 text-center bg-roboflow-50 hover:bg-pushpin-0 transition-all duration-500 ease-apple"
+                         style="box-shadow: inset 0 0 0 1.5px #E9E9E9;">
+                        <div id="placeholder">
+                            <div class="w-1200 h-1200 rounded-pill bg-mochimalist mx-auto flex items-center justify-center shadow-floating mb-400">
+                                <svg class="w-700 h-700 text-roboflow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                            </div>
+                            <p class="text-300 text-cosmicore font-semibold" data-i18n-html="dropzone_main"></p>
+                            <p class="text-100 text-roboflow-500 mt-200" data-i18n="dropzone_hint"></p>
+                        </div>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" multiple class="hidden">
+                </label>
+
+                <!-- Thumbnail strip for selected images -->
+                <div id="thumbStrip" class="hidden mt-400 flex flex-wrap gap-300"></div>
+
+                <!-- Divider with OR -->
+                <div class="flex items-center gap-300 my-600">
+                    <div class="flex-1 h-px bg-roboflow-200"></div>
+                    <span class="text-100 text-roboflow-400 tracking-widest uppercase font-semibold" data-i18n="or"></span>
+                    <div class="flex-1 h-px bg-roboflow-200"></div>
+                </div>
+
+                <!-- Plain-text input -->
+                <div>
+                    <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="paste_label"></label>
+                    <textarea id="emailText" rows="6" class="tk-input"
+                              style="border-radius:16px; padding:16px 20px;"
+                              data-i18n-attr="placeholder:paste_placeholder"></textarea>
+                    <p class="text-100 text-roboflow-400 mt-200" data-i18n="paste_hint"></p>
+                </div>
+
+                <button id="analyzeBtn" disabled
+                        class="w-full mt-500 bg-pushpin-450 text-mochimalist py-400 rounded-pill font-semibold text-200 disabled:bg-roboflow-200 disabled:text-roboflow-400 disabled:cursor-not-allowed disabled:hover:translate-y-0 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="analyze_btn"></button>
+            </div>
+
+            <!-- Step 2: Review -->
+            <div id="step2" class="hidden">
+
+                <!-- Summary card (hero) -->
+                <div class="bg-mochimalist rounded-600 shadow-lift p-700 mb-500 animate-fadeUp" style="box-shadow: 0 4px 8px rgba(17,17,17,0.08), 0 24px 48px rgba(17,17,17,0.10), inset 0 0 0 1.5px rgba(230,0,35,0.18);">
+                    <div class="flex items-center justify-between mb-400">
+                        <div class="flex items-center gap-300">
+                            <span class="step-num text-500 text-pushpin-450">02.</span>
+                            <h2 class="text-300 font-semibold text-cosmicore" data-i18n="summary_h"></h2>
+                        </div>
+                        <span class="text-100 text-roboflow-400 px-300 py-100 rounded-pill bg-roboflow-50" data-i18n="editable"></span>
+                    </div>
+                    <textarea id="summary" rows="9" class="summary-box tk-input"
+                              style="background:#FAFAF7; border-radius:20px; padding:24px 28px;"
+                              data-i18n-attr="placeholder:summary_placeholder"></textarea>
+                </div>
+
+                <!-- Customer info -->
+                <div class="bg-mochimalist rounded-600 shadow-floating p-700 mb-500 animate-fadeUp">
+                    <div class="flex items-center gap-300 mb-500">
+                        <span class="step-num text-400 text-roboflow-400">03.</span>
+                        <h3 class="text-200 font-semibold text-cosmicore tracking-wide" data-i18n="customer_h"></h3>
+                    </div>
+
+                    <div class="mb-500">
+                        <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n-html="picker_label"></label>
+                        <div class="relative">
+                            <input type="text" id="customerSearch" autocomplete="off"
+                                   class="tk-input tk-input-pill"
+                                   data-i18n-attr="placeholder:picker_placeholder">
+                            <div id="customerDropdown"
+                                 class="hidden absolute z-20 w-full mt-200 bg-mochimalist rounded-400 shadow-lift max-h-72 overflow-y-auto"></div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-400">
+                        <div>
+                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n-html="name_label"></label>
+                            <input type="text" id="customerName" class="tk-input">
+                        </div>
+                        <div>
+                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="company_label"></label>
+                            <input type="text" id="company" class="tk-input">
+                        </div>
+                        <div>
+                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n-html="date_label"></label>
+                            <input type="date" id="date" class="tk-input">
+                        </div>
+                        <div>
+                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="status_label"></label>
+                            <select id="status" class="tk-input"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action items -->
+                <div class="bg-mochimalist rounded-600 shadow-floating p-700 mb-500 animate-fadeUp">
+                    <div class="flex items-center gap-300 mb-400">
+                        <span class="step-num text-400 text-roboflow-400">04.</span>
+                        <h3 class="text-200 font-semibold text-cosmicore tracking-wide" data-i18n="action_h"></h3>
+                    </div>
+                    <textarea id="actionItems" rows="6" class="tk-input" style="border-radius:16px; padding:16px 20px;"></textarea>
+                </div>
+
+                <!-- Sticky action bar -->
+                <div class="flex gap-300 sticky bottom-500 backdrop-blur-xl bg-mochimalist/80 rounded-pill p-200 shadow-lift">
+                    <button id="saveBtn"
+                            class="flex-1 bg-cosmicore text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="save_btn"></button>
+                    <button id="resetBtn"
+                            class="px-700 py-400 bg-mochimalist text-roboflow-700 rounded-pill font-semibold text-200 hover:bg-roboflow-50 hover:-translate-y-0.5 transition-all duration-500 ease-apple shadow-floating" data-i18n="reset_btn"></button>
+                </div>
+            </div>
+
+            <!-- Step 3: Success -->
+            <div id="step3" class="hidden bg-mochimalist rounded-600 shadow-lift p-800 mb-500 animate-fadeUp" style="box-shadow: 0 4px 8px rgba(17,17,17,0.08), 0 24px 48px rgba(17,17,17,0.10), inset 0 0 0 1.5px rgba(230,0,35,0.18);">
+                <div class="flex items-start gap-400">
+                    <div class="w-1200 h-1200 bg-pushpin-450 rounded-pill flex items-center justify-center flex-shrink-0 shadow-raised">
+                        <svg class="w-700 h-700 text-mochimalist" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1 pt-200">
+                        <div class="text-100 text-pushpin-450 font-semibold tracking-widest uppercase">Saved</div>
+                        <h2 class="text-400 font-bold text-cosmicore mt-100" data-i18n="saved_h"></h2>
+                        <p class="text-200 text-roboflow-600 mt-200" data-i18n="saved_sub"></p>
+                    </div>
+                </div>
+                <div class="flex gap-300 mt-600">
+                    <button id="doAnother" class="flex-1 bg-cosmicore text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="do_another"></button>
+                    <button id="goListBtn" class="flex-1 bg-mochimalist text-roboflow-700 py-400 rounded-pill font-semibold text-200 hover:bg-roboflow-50 hover:-translate-y-0.5 transition-all duration-500 ease-apple shadow-floating" data-i18n="see_records"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- =============== LIST view =============== -->
+        <div id="listView" class="hidden animate-fadeUp">
+            <div class="flex items-end justify-between mb-500">
+                <div>
+                    <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold">Archive</div>
+                    <h2 class="text-500 font-bold text-cosmicore mt-100" data-i18n-html="archive_h"></h2>
+                </div>
+                <span id="recordCount" class="text-100 text-roboflow-500 px-400 py-200 rounded-pill bg-mochimalist shadow-floating"></span>
+            </div>
+            <div id="recordsList" class="grid gap-400"></div>
+            <div id="recordsEmpty" class="hidden text-center py-1200 text-roboflow-400 text-200">
+                <div class="w-1600 h-1600 rounded-pill bg-mochimalist mx-auto flex items-center justify-center shadow-floating mb-400">
+                    <svg class="w-1000 h-1000 text-roboflow-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>
+                    </svg>
+                </div>
+                <span data-i18n="empty_records"></span>
+            </div>
+        </div>
+
+        <footer class="text-center text-100 text-roboflow-400 mt-1200" data-i18n-html="footer"></footer>
+    </div>
+</div>
+
+<!-- Loading (skeleton modal) -->
+<div id="loading" class="hidden fixed inset-0 bg-cosmicore/30 backdrop-blur-md flex items-center justify-center z-50">
+    <div class="bg-mochimalist rounded-500 p-700 shadow-lift min-w-[320px] animate-fadeUp">
+        <div class="space-y-300">
+            <div class="skeleton animate-shimmer h-400 w-3/4 rounded-pill"></div>
+            <div class="skeleton animate-shimmer h-300 w-full rounded-pill"></div>
+            <div class="skeleton animate-shimmer h-300 w-5/6 rounded-pill"></div>
+        </div>
+        <p id="loadingText" class="mt-500 text-200 text-roboflow-600 font-semibold" data-i18n="loading_default"></p>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast" class="hidden fixed top-600 right-600 px-500 py-400 rounded-pill shadow-lift max-w-md z-50 text-200 font-semibold backdrop-blur-xl"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const state = {
+    filePath: '',          // joined paths for Excel ("name1;name2")
+    filePaths: [],         // array of saved paths returned from /api/analyze
+    fileBlobs: [],         // pending File objects waiting to be analyzed
+    customers: [],
+    user: null,
+    mode: 'login',
+    lang: (localStorage.getItem('lang') || 'en').toLowerCase() === 'zh' ? 'zh' : 'en',
+};
+
+// ---------- i18n ----------
+const I18N = {
+    en: {
+        hero_brand: 'Email <span class="font-display italic text-pushpin-450">Forge</span>',
+        brand_tagline: 'Email Summarizer',
+        auth_subtitle: 'Sign in to upload screenshots. AI summaries write straight into your private Excel.',
+        auth_footnote: 'Each user gets an isolated Excel workbook.',
+        login: 'Sign in',
+        register: 'Sign up',
+        login_submit: 'Sign in',
+        register_submit: 'Create account',
+        email_label: 'Email',
+        password_label: 'Password <span class="text-roboflow-400">(≥ 6 chars)</span>',
+        nav_records: 'My records',
+        nav_home: 'Back to upload',
+        nav_download: 'Download Excel',
+        logout: 'Sign out',
+        hero_title: 'Every email,<br><span class="font-display italic text-pushpin-450">forged</span> into one row.',
+        hero_sub: 'Upload a screenshot. AI extracts the essentials and writes them into your Excel. Customer threads stay tidy, follow-ups never slip.',
+        step1: '① Upload',
+        step2: '② Review',
+        step3: '③ Archive',
+        upload_h: 'Upload an email screenshot',
+        dropzone_main: 'Click, drag, or paste with <span class="font-mono px-200 py-100 bg-mochimalist rounded-100 text-200 shadow-floating">Cmd+V</span>',
+        dropzone_hint: 'PNG / JPG · multiple shots OK if the email is long · max 8 files / 40 MB total',
+        or: 'or',
+        paste_label: 'Paste the email text directly',
+        paste_placeholder: 'Paste plain-text email body here. Useful for emails too long to screenshot, or forwarded threads.',
+        paste_hint: 'You can use either screenshots, text, or both.',
+        shot_count: (n) => `${n} shot${n === 1 ? '' : 's'} selected`,
+        analyze_btn: 'Analyze email',
+        summary_h: 'Core summary',
+        editable: 'editable',
+        summary_placeholder: 'AI will draft the most critical summary here...',
+        customer_h: 'Customer info',
+        picker_label: 'Pick from existing customers <span class="text-roboflow-400 font-normal">(type to search)</span>',
+        picker_placeholder: 'Type a name or company...',
+        name_label: 'Name <span class="text-pushpin-450">*</span>',
+        company_label: 'Company',
+        date_label: 'Date <span class="text-pushpin-450">*</span>',
+        status_label: 'Status',
+        action_h: 'Follow-up items',
+        save_btn: 'Save to my Excel',
+        reset_btn: 'Reset',
+        saved_h: 'Saved to your Excel',
+        saved_sub: 'View it under "My records", or download the Excel file.',
+        do_another: 'Process another',
+        see_records: 'See records',
+        archive_h: 'My <span class="font-display italic">email</span> archive',
+        empty_records: 'No records yet. Upload your first email to get started.',
+        footer: 'Powered by <span class="font-display italic">Gemini 2.5 Flash</span> · Excel',
+        loading_default: 'Working...',
+        loading_signin: 'Signing in...',
+        loading_signup: 'Creating account...',
+        loading_analyze: 'AI is analyzing the email...',
+        loading_save: 'Saving to Excel...',
+        toast_signin_ok: 'Signed in',
+        toast_signup_ok: 'Account created',
+        toast_pasted: 'Pasted image',
+        toast_need_image: 'Only image files are supported',
+        toast_need_name: 'Customer name is required',
+        record_count: (n) => `${n} record${n === 1 ? '' : 's'}`,
+        emails_unit: (n) => `${n} email${n === 1 ? '' : 's'}`,
+        company_none: '(no company)',
+        no_match: 'No match. Fill in a new customer below.',
+        status_options: ['Pending', 'In progress', 'Done'],
+        status_pending_default: 'Pending',
+        status_done: 'Done',
+        status_progress: 'In progress',
+        status_pending: 'Pending',
+        todo_label: 'TODO',
+        view_image: 'View screenshot',
+        health_missing: (m) => `Server is missing: ${m}`,
+    },
+    zh: {
+        hero_brand: '邮件<span class="font-display italic text-pushpin-450">工坊</span>',
+        brand_tagline: '邮件汇总工坊',
+        auth_subtitle: '登录后开始上传邮件截图,AI 摘要直写你的专属 Excel。',
+        auth_footnote: '每位用户拥有独立 Excel,数据隔离。',
+        login: '登录',
+        register: '注册',
+        login_submit: '登录',
+        register_submit: '注册并登录',
+        email_label: '邮箱',
+        password_label: '密码 <span class="text-roboflow-400">(≥ 6 位)</span>',
+        nav_records: '我的记录',
+        nav_home: '回到上传',
+        nav_download: '下载 Excel',
+        logout: '退出',
+        hero_title: '把每封邮件,<br><span class="font-display italic text-pushpin-450">炼成</span>一行档案。',
+        hero_sub: '上传截图,AI 提取要点,一键写入你的 Excel。客户脉络清楚,跟进事项不会落下。',
+        step1: '① 上传',
+        step2: '② 校对',
+        step3: '③ 入档',
+        upload_h: '上传邮件截图',
+        dropzone_main: '点击,拖拽,或 <span class="font-mono px-200 py-100 bg-mochimalist rounded-100 text-200 shadow-floating">Cmd+V</span> 粘贴',
+        dropzone_hint: 'PNG / JPG,长邮件可上传多张,最多 8 张 / 总计 40 MB',
+        or: '或者',
+        paste_label: '直接粘贴邮件正文',
+        paste_placeholder: '把邮件正文粘贴到这里。适合截图截不下的长邮件,或转发邮件。',
+        paste_hint: '截图、文字、或两者结合都可以。',
+        shot_count: (n) => `已选 ${n} 张`,
+        analyze_btn: '分析邮件',
+        summary_h: '核心摘要',
+        editable: '可编辑',
+        summary_placeholder: 'AI 会在这里生成最关键的摘要...',
+        customer_h: '客户信息',
+        picker_label: '从已有客户中选择 <span class="text-roboflow-400 font-normal">(输入可搜索)</span>',
+        picker_placeholder: '输入客户名或公司名...',
+        name_label: '客户名 <span class="text-pushpin-450">*</span>',
+        company_label: '公司',
+        date_label: '日期 <span class="text-pushpin-450">*</span>',
+        status_label: '状态',
+        action_h: '待跟进事项',
+        save_btn: '保存到我的 Excel',
+        reset_btn: '重来',
+        saved_h: '已写入你的 Excel',
+        saved_sub: '在右上角"我的记录"查看,或下载 Excel 到本地。',
+        do_another: '处理下一封',
+        see_records: '看记录',
+        archive_h: '我的<span class="font-display italic">邮件</span>记录',
+        empty_records: '还没有记录,去上传第一封邮件吧。',
+        footer: 'Powered by <span class="font-display italic">Gemini 2.5 Flash</span> · Excel',
+        loading_default: '处理中...',
+        loading_signin: '登录中...',
+        loading_signup: '注册中...',
+        loading_analyze: 'AI 正在分析邮件...',
+        loading_save: '正在保存到 Excel...',
+        toast_signin_ok: '登录成功',
+        toast_signup_ok: '注册成功',
+        toast_pasted: '已粘贴图片',
+        toast_need_image: '只支持图片文件',
+        toast_need_name: '请填写客户名',
+        record_count: (n) => `共 ${n} 条`,
+        emails_unit: (n) => `${n} 封`,
+        company_none: '(未填公司)',
+        no_match: '无匹配,下面手动填新客户',
+        status_options: ['待处理', '跟进中', '已完成'],
+        status_pending_default: '待处理',
+        status_done: '已完成',
+        status_progress: '跟进中',
+        status_pending: '待处理',
+        todo_label: '跟进',
+        view_image: '查看截图',
+        health_missing: (m) => `服务端缺少配置: ${m}`,
+    },
+};
+const t = (key) => (I18N[state.lang] && I18N[state.lang][key]) || key;
+
+function applyI18n() {
+    document.documentElement.lang = state.lang === 'zh' ? 'zh-CN' : 'en';
+    // text content
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+        el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    // innerHTML (for keys that contain markup)
+    document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        el.innerHTML = t(el.getAttribute('data-i18n-html'));
+    });
+    // attribute values (e.g. placeholder)
+    document.querySelectorAll('[data-i18n-attr]').forEach(el => {
+        const spec = el.getAttribute('data-i18n-attr');
+        spec.split(',').forEach(pair => {
+            const [attr, key] = pair.split(':').map(s => s.trim());
+            if (attr && key) el.setAttribute(attr, t(key));
+        });
+    });
+    // status select options
+    const sel = $('status');
+    if (sel) {
+        const prev = sel.value;
+        const opts = t('status_options');
+        sel.innerHTML = opts.map(o => `<option>${o}</option>`).join('');
+        // try to map across languages by index
+        const otherLang = state.lang === 'en' ? 'zh' : 'en';
+        const otherOpts = I18N[otherLang].status_options;
+        const idx = otherOpts.indexOf(prev);
+        if (idx >= 0) sel.value = opts[idx];
+        else if (opts.includes(prev)) sel.value = prev;
+    }
+    // login/register submit button label depends on mode
+    if ($('authSubmit')) {
+        $('authSubmit').textContent = state.mode === 'register' ? t('register_submit') : t('login_submit');
+    }
+    // language pill active state
+    document.querySelectorAll('.lang-btn').forEach(b => {
+        const active = b.dataset.lang === state.lang;
+        b.className = active
+            ? 'lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple bg-cosmicore text-mochimalist'
+            : 'lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple text-roboflow-500 hover:text-cosmicore';
+    });
+}
+
+function setLang(lang) {
+    state.lang = lang === 'zh' ? 'zh' : 'en';
+    localStorage.setItem('lang', state.lang);
+    applyI18n();
+    // Re-pull data tied to the per-language Excel file
+    if (state.user) {
+        loadCustomers();
+        if (!$('listView').classList.contains('hidden')) loadRecords();
+    }
+}
+
+document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.lang-btn');
+    if (btn) setLang(btn.dataset.lang);
+});
+
+const showToast = (msg, type='error') => {
+    const t = $('toast');
+    t.textContent = msg;
+    const base = 'fixed top-600 right-600 px-500 py-400 rounded-pill shadow-lift max-w-md z-50 text-200 font-semibold backdrop-blur-xl';
+    t.className = type === 'error'
+        ? `${base} bg-pushpin-450/95 text-mochimalist`
+        : `${base} bg-cosmicore/95 text-mochimalist`;
+    t.classList.remove('hidden');
+    setTimeout(()=>t.classList.add('hidden'), 3500);
+};
+const escapeHtml = (s) => String(s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const showAuth = () => { $('authView').classList.remove('hidden'); $('appView').classList.add('hidden'); };
+const showApp = () => { $('appView').classList.remove('hidden'); $('authView').classList.add('hidden'); };
+
+const setStep = (n) => {
+    document.querySelectorAll('#stepBar .step-pill').forEach(el => {
+        const s = Number(el.dataset.step);
+        if (s === n) {
+            el.className = 'step-pill px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold';
+        } else if (s < n) {
+            el.className = 'step-pill px-400 py-200 rounded-pill bg-pushpin-450 text-mochimalist font-semibold';
+        } else {
+            el.className = 'step-pill px-400 py-200 rounded-pill bg-mochimalist/80 backdrop-blur-md text-roboflow-500 font-semibold shadow-glass';
+        }
+    });
+};
+
+// ---------- Boot ----------
+async function boot() {
+    applyI18n();
+    try {
+        const r = await fetch('/api/me');
+        if (r.ok) {
+            const data = await r.json();
+            state.user = data.user;
+            $('userEmailLabel').textContent = data.user.email;
+            showApp();
+            showHome();
+            await loadCustomers();
+            checkHealth();
+            return;
+        }
+    } catch (_) {}
+    showAuth();
+}
+boot();
+
+async function checkHealth() {
+    try {
+        const h = await (await fetch('/api/health')).json();
+        const missing = [];
+        if (!h.gemini_key_set) missing.push('GEMINI_API_KEY');
+        if (!h.session_secret_set) missing.push('SESSION_SECRET');
+        if (missing.length) {
+            const badge = $('healthBadge');
+            badge.textContent = t('health_missing')(missing.join(', '));
+            badge.classList.remove('hidden');
+        }
+    } catch (_) {}
+}
+
+// ---------- Auth tab switching ----------
+$('tabLogin').addEventListener('click', () => setAuthMode('login'));
+$('tabRegister').addEventListener('click', () => setAuthMode('register'));
+
+function setAuthMode(mode) {
+    state.mode = mode;
+    const tl = $('tabLogin'), tr = $('tabRegister');
+    const active = 'flex-1 py-200 px-400 rounded-pill bg-cosmicore text-mochimalist font-semibold transition-all duration-500 ease-apple';
+    const idle   = 'flex-1 py-200 px-400 rounded-pill text-roboflow-600 font-semibold transition-all duration-500 ease-apple';
+    if (mode === 'login') {
+        tl.className = active + ' '; tr.className = idle + ' ';
+        $('authPassword').autocomplete = 'current-password';
+    } else {
+        tr.className = active + ' '; tl.className = idle + ' ';
+        $('authPassword').autocomplete = 'new-password';
+    }
+    // tab labels and submit label
+    tl.textContent = t('login');
+    tr.textContent = t('register');
+    $('authSubmit').textContent = mode === 'register' ? t('register_submit') : t('login_submit');
+}
+
+$('authForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = $('authEmail').value.trim();
+    const password = $('authPassword').value;
+    const url = state.mode === 'login' ? '/api/login' : '/api/register';
+    const fd = new FormData();
+    fd.append('email', email);
+    fd.append('password', password);
+    $('loading').classList.remove('hidden');
+    $('loadingText').textContent = state.mode === 'login' ? t('loading_signin') : t('loading_signup');
+    try {
+        const r = await fetch(url, { method: 'POST', body: fd });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'Error');
+        state.user = data.user;
+        $('userEmailLabel').textContent = data.user.email;
+        showApp();
+        showHome();
+        await loadCustomers();
+        checkHealth();
+        showToast(state.mode === 'login' ? t('toast_signin_ok') : t('toast_signup_ok'), 'success');
+    } catch (err) {
+        showToast(String(err.message || err));
+    } finally {
+        $('loading').classList.add('hidden');
+    }
+});
+
+$('logoutBtn').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    state.user = null;
+    $('authEmail').value = '';
+    $('authPassword').value = '';
+    showAuth();
+});
+
+// ---------- Nav ----------
+$('navList').addEventListener('click', () => showList());
+$('navHome').addEventListener('click', () => showHome());
+$('navDownload').addEventListener('click', () => { window.location.href = `/api/download?lang=${state.lang}`; });
+
+function showHome() {
+    $('homeView').classList.remove('hidden');
+    $('listView').classList.add('hidden');
+    $('navList').classList.remove('hidden');
+    $('navHome').classList.add('hidden');
+}
+async function showList() {
+    $('homeView').classList.add('hidden');
+    $('listView').classList.remove('hidden');
+    $('navList').classList.add('hidden');
+    $('navHome').classList.remove('hidden');
+    await loadRecords();
+}
+
+// ---------- Records list ----------
+async function loadRecords() {
+    try {
+        const r = await fetch(`/api/records?lang=${state.lang}`);
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'Load failed');
+        renderRecords(data.records || []);
+    } catch (e) {
+        showToast(String(e.message || e));
+    }
+}
+
+function statusKind(s) {
+    const v = String(s || '').trim();
+    if (v === 'Done' || v === '已完成') return 'done';
+    if (v === 'In progress' || v === '跟进中') return 'progress';
+    return 'pending';
+}
+
+function renderRecords(records) {
+    const list = $('recordsList');
+    const empty = $('recordsEmpty');
+    $('recordCount').textContent = records.length ? t('record_count')(records.length) : '';
+    if (!records.length) {
+        list.innerHTML = '';
+        empty.classList.remove('hidden');
+        return;
+    }
+    empty.classList.add('hidden');
+    list.innerHTML = records.map(r => {
+        const kind = statusKind(r.status);
+        const statusBadge = kind === 'done'
+              ? 'bg-pushpin-450 text-mochimalist'
+              : kind === 'progress'
+              ? 'bg-cosmicore text-mochimalist'
+              : 'bg-roboflow-100 text-roboflow-700';
+        const paths = (r.file_path || '').split(';').map(s => s.trim()).filter(Boolean);
+        const imgLink = paths.length
+            ? paths.map((p, idx) => `<a href="/uploads/${encodeURIComponent(p)}" target="_blank" class="text-100 text-pushpin-450 font-semibold hover:underline inline-flex items-center gap-100">${escapeHtml(t('view_image'))}${paths.length > 1 ? ' ' + (idx + 1) : ''} <span aria-hidden="true">→</span></a>`).join('<span class="text-roboflow-300 mx-200">·</span>')
+            : '';
+        const statusText = r.status || t('status_pending_default');
+        return `
+        <div class="bg-mochimalist rounded-500 shadow-floating p-600 hover:shadow-lift hover:-translate-y-0.5 transition-all duration-500 ease-apple">
+            <div class="flex items-start justify-between gap-400 mb-300">
+                <div class="min-w-0">
+                    <div class="text-300 font-semibold text-cosmicore truncate">${escapeHtml(r.customer_name)}</div>
+                    ${r.company ? `<div class="text-100 text-roboflow-500 mt-100">@ ${escapeHtml(r.company)}</div>` : ''}
+                </div>
+                <div class="flex items-center gap-200 text-100 flex-shrink-0">
+                    <span class="text-roboflow-400 font-mono">${escapeHtml(r.date)}</span>
+                    <span class="px-300 py-100 rounded-pill font-semibold ${statusBadge}">${escapeHtml(statusText)}</span>
+                </div>
+            </div>
+            <div class="text-200 text-roboflow-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(r.summary)}</div>
+            ${r.action_items ? `<div class="mt-400 pt-400 text-100 text-roboflow-600 whitespace-pre-wrap" style="border-top:1px solid #F1F1F1;"><span class="text-pushpin-450 font-semibold tracking-widest uppercase mr-200">${escapeHtml(t('todo_label'))}</span>${escapeHtml(r.action_items)}</div>` : ''}
+            ${imgLink ? `<div class="mt-400">${imgLink}</div>` : ''}
+        </div>`;
+    }).join('');
+}
+
+// ---------- Upload + analyze ----------
+$('date').valueAsDate = new Date();
+
+const MAX_FILES = 8;
+const MAX_TOTAL = 40 * 1024 * 1024;
+
+function refreshAnalyzeBtn() {
+    const hasImages = state.fileBlobs.length > 0;
+    const hasText = $('emailText').value.trim().length > 0;
+    $('analyzeBtn').disabled = !(hasImages || hasText);
+}
+
+function renderThumbs() {
+    const strip = $('thumbStrip');
+    if (state.fileBlobs.length === 0) {
+        strip.classList.add('hidden');
+        strip.innerHTML = '';
+        return;
+    }
+    strip.classList.remove('hidden');
+    strip.innerHTML = state.fileBlobs.map((f, i) => `
+        <div class="relative group" data-idx="${i}" style="width:128px;">
+            <img src="${URL.createObjectURL(f)}" class="w-full h-32 object-cover rounded-300 shadow-floating">
+            <button type="button" class="thumb-del absolute -top-200 -right-200 w-700 h-700 rounded-pill bg-cosmicore text-mochimalist text-200 font-bold flex items-center justify-center shadow-raised hover:bg-pushpin-450 transition-all duration-500 ease-apple" aria-label="remove">×</button>
+            <div class="text-100 text-roboflow-500 mt-200 truncate">${escapeHtml(f.name)}</div>
+            <div class="text-100 text-roboflow-400">${(f.size/1024).toFixed(0)} KB</div>
+        </div>
+    `).join('') + `
+        <div class="text-100 text-roboflow-500 self-end px-300 py-200 rounded-pill bg-roboflow-50">
+            ${escapeHtml(t('shot_count')(state.fileBlobs.length))}
+        </div>`;
+
+    strip.querySelectorAll('.thumb-del').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const idx = Number(btn.closest('[data-idx]').dataset.idx);
+            state.fileBlobs.splice(idx, 1);
+            renderThumbs();
+            refreshAnalyzeBtn();
+        });
+    });
+}
+
+function addFiles(files) {
+    let total = state.fileBlobs.reduce((s, f) => s + f.size, 0);
+    for (const f of files) {
+        if (!f.type.startsWith('image/')) { showToast(t('toast_need_image')); continue; }
+        if (state.fileBlobs.length >= MAX_FILES) { showToast(`Max ${MAX_FILES} screenshots`); break; }
+        if (total + f.size > MAX_TOTAL) { showToast('Total size exceeds 40 MB'); break; }
+        state.fileBlobs.push(f);
+        total += f.size;
+    }
+    renderThumbs();
+    refreshAnalyzeBtn();
+}
+
+$('fileInput').addEventListener('change', (e) => { addFiles(Array.from(e.target.files || [])); e.target.value = ''; });
+
+$('emailText').addEventListener('input', refreshAnalyzeBtn);
+
+const dz = $('dropZone');
+['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, (e)=>{e.preventDefault(); dz.style.boxShadow='inset 0 0 0 2px #E60023'; dz.classList.add('bg-pushpin-0');}));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, (e)=>{e.preventDefault(); dz.style.boxShadow='inset 0 0 0 1.5px #E9E9E9'; dz.classList.remove('bg-pushpin-0');}));
+dz.addEventListener('drop', (e) => { e.preventDefault(); addFiles(Array.from(e.dataTransfer.files || [])); });
+
+document.addEventListener('paste', (e) => {
+    if ($('appView').classList.contains('hidden')) return;
+    // If the user is typing into the email text area, let the paste land there.
+    if (document.activeElement === $('emailText')) return;
+    const items = e.clipboardData?.items || [];
+    const imgs = [];
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            const f = item.getAsFile();
+            if (f) imgs.push(f);
+        }
+    }
+    if (imgs.length) {
+        addFiles(imgs);
+        showToast(t('toast_pasted'), 'success');
+    }
+});
+
+// Customer picker
+const dropdown = $('customerDropdown');
+const searchInput = $('customerSearch');
+
+const loadCustomers = async () => {
+    try {
+        const r = await fetch(`/api/customers?lang=${state.lang}`);
+        const data = await r.json();
+        state.customers = data.customers || [];
+    } catch (_) {}
+};
+
+const renderDropdown = (query='') => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+        ? state.customers.filter(c => c.name.toLowerCase().includes(q) || c.company.toLowerCase().includes(q))
+        : state.customers;
+    if (!filtered.length) {
+        dropdown.innerHTML = `<div class="p-400 text-200 text-roboflow-400">${escapeHtml(t('no_match'))}</div>`;
+        dropdown.classList.remove('hidden');
+        return;
+    }
+    const groups = {};
+    for (const c of filtered) {
+        const company = c.company || t('company_none');
+        (groups[company] = groups[company] || []).push(c);
+    }
+    let html = '';
+    for (const [company, list] of Object.entries(groups)) {
+        html += `<div class="px-400 py-200 bg-roboflow-50 text-100 font-semibold text-roboflow-500 tracking-wide">${escapeHtml(company)}</div>`;
+        for (const c of list) {
+            html += `<div class="customer-item px-400 py-300 hover:bg-pushpin-0 cursor-pointer text-200 flex items-center justify-between transition-colors duration-500 ease-apple"
+                          data-name="${escapeHtml(c.name)}" data-company="${escapeHtml(c.company)}">
+                        <span class="font-semibold text-cosmicore">${escapeHtml(c.name)}</span>
+                        <span class="text-100 text-roboflow-400">${escapeHtml(t('emails_unit')(c.count))}</span>
+                     </div>`;
+        }
+    }
+    dropdown.innerHTML = html;
+    dropdown.classList.remove('hidden');
+    dropdown.querySelectorAll('.customer-item').forEach(el => {
+        el.addEventListener('click', () => {
+            $('customerName').value = el.dataset.name;
+            $('company').value = el.dataset.company;
+            searchInput.value = `${el.dataset.name}${el.dataset.company ? ' @ ' + el.dataset.company : ''}`;
+            dropdown.classList.add('hidden');
+        });
+    });
+};
+
+searchInput.addEventListener('focus', () => renderDropdown(searchInput.value));
+searchInput.addEventListener('input', () => renderDropdown(searchInput.value));
+document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !dropdown.contains(e.target)) dropdown.classList.add('hidden');
+});
+
+$('analyzeBtn').addEventListener('click', async () => {
+    const text = $('emailText').value.trim();
+    if (state.fileBlobs.length === 0 && !text) return;
+    $('loading').classList.remove('hidden');
+    $('loadingText').textContent = t('loading_analyze');
+    const fd = new FormData();
+    state.fileBlobs.forEach(f => fd.append('files', f));
+    fd.append('text', text);
+    fd.append('lang', state.lang);
+    try {
+        const res = await fetch('/api/analyze', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.detail || 'Analyze failed');
+        state.filePath = data.file_path || '';
+        state.filePaths = data.file_paths || [];
+        $('customerName').value = data.sender || '';
+        $('company').value = data.company || '';
+        $('summary').value = data.summary || '';
+        $('actionItems').value = data.action_items || '';
+        if (data.sender) searchInput.value = `${data.sender}${data.company ? ' @ ' + data.company : ''}`;
+        $('step1').classList.add('hidden');
+        $('step2').classList.remove('hidden');
+        setStep(2);
+        await loadCustomers();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (e) {
+        showToast(String(e.message || e));
+    } finally {
+        $('loading').classList.add('hidden');
+    }
+});
+
+$('saveBtn').addEventListener('click', async () => {
+    if (!$('customerName').value.trim()) { showToast(t('toast_need_name')); $('customerName').focus(); return; }
+    $('loading').classList.remove('hidden');
+    $('loadingText').textContent = t('loading_save');
+    const fd = new FormData();
+    fd.append('customer_name', $('customerName').value);
+    fd.append('company', $('company').value);
+    fd.append('date', $('date').value);
+    fd.append('summary', $('summary').value);
+    fd.append('action_items', $('actionItems').value);
+    fd.append('status', $('status').value);
+    fd.append('file_path', state.filePath || '');
+    fd.append('lang', state.lang);
+    try {
+        const res = await fetch('/api/save', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.detail || 'Save failed');
+        $('step2').classList.add('hidden');
+        $('step3').classList.remove('hidden');
+        setStep(3);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        loadCustomers();
+    } catch (e) {
+        showToast(String(e.message || e));
+    } finally {
+        $('loading').classList.add('hidden');
+    }
+});
+
+const reset = () => {
+    state.filePath = '';
+    state.filePaths = [];
+    state.fileBlobs = [];
+    $('fileInput').value = '';
+    renderThumbs();
+    $('emailText').value = '';
+    $('analyzeBtn').disabled = true;
+    $('customerName').value = '';
+    $('company').value = '';
+    $('summary').value = '';
+    $('actionItems').value = '';
+    $('customerSearch').value = '';
+    $('date').valueAsDate = new Date();
+    dropdown.classList.add('hidden');
+    $('step1').classList.remove('hidden');
+    $('step2').classList.add('hidden');
+    $('step3').classList.add('hidden');
+    setStep(1);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+$('resetBtn').addEventListener('click', reset);
+$('doAnother').addEventListener('click', reset);
+$('goListBtn').addEventListener('click', () => { reset(); showList(); });
+</script>
+
+</body>
+</html>
