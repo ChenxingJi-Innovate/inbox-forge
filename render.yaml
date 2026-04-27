@@ -1,19 +1,19 @@
 services:
   - type: web
-    name: email-summarizer
+    name: inbox-forge
     runtime: python
     region: singapore
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health
-    disk:
-      name: email-summarizer-data
-      mountPath: /var/data
-      sizeGB: 1
+    # Free tier: no persistent disk. Data lives in container FS and resets when
+    # the instance spins down (after ~15 min idle). For a demo this is fine
+    # since the interviewer's session stays warm. Upgrade to Starter to add a
+    # `disk:` block for true persistence.
     envVars:
       - key: DATA_DIR
-        value: /var/data
+        value: /opt/render/project/src/data
       - key: COOKIE_SECURE
         value: "true"
       - key: PYTHON_VERSION
