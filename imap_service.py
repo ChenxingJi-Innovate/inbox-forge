@@ -95,6 +95,9 @@ def _extract_body(msg) -> str:
     return ""
 
 
+OUTLOOK_PERSONAL_DOMAINS = {"outlook.com", "hotmail.com", "live.com", "msn.com"}
+
+
 def fetch_unread(
     email_addr: str,
     password: str,
@@ -105,6 +108,14 @@ def fetch_unread(
     """Return up to `limit` unread emails. Marks them read=False (PEEK) so we
     don't change the server's read state.
     """
+    domain = email_addr.split("@")[-1].strip().lower() if "@" in email_addr else ""
+    if domain in OUTLOOK_PERSONAL_DOMAINS:
+        raise RuntimeError(
+            "Microsoft disabled IMAP basic-auth for personal Outlook accounts in "
+            "September 2024. Use Microsoft Graph OAuth, email forwarding, or a "
+            "different provider (Gmail / iCloud / QQ / 163 all still support IMAP)."
+        )
+
     if not host:
         guess = guess_host(email_addr)
         if not guess:

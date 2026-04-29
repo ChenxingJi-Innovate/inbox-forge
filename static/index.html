@@ -240,6 +240,7 @@
                                         <th class="text-left px-400 py-300 font-semibold" data-i18n="col_domain"></th>
                                         <th class="text-left px-400 py-300 font-semibold" data-i18n="col_host"></th>
                                         <th class="text-left px-400 py-300 font-semibold w-16" data-i18n="col_port"></th>
+                                        <th class="text-left px-400 py-300 font-semibold" data-i18n="col_note"></th>
                                     </tr>
                                 </thead>
                                 <tbody class="text-cosmicore"></tbody>
@@ -428,6 +429,7 @@ const I18N = {
         col_domain: 'Email domain',
         col_host: 'IMAP host',
         col_port: 'Port',
+        col_note: 'Credential',
         host_panel_other: '<strong class="text-cosmicore">Not in the list?</strong> For corporate / self-hosted mail you must enter the host manually. Common ones: <span class="font-mono">@aliyun.com → imap.aliyun.com</span>, Tencent Exmail (<span class="font-mono">imap.exmail.qq.com</span>), Netease Enterprise (<span class="font-mono">imap.qiye.163.com</span>).',
         limit_label: 'How many unread to fetch',
         fetch_btn: 'Fetch unread',
@@ -503,6 +505,7 @@ const I18N = {
         col_domain: '邮箱域名',
         col_host: 'IMAP 服务器',
         col_port: '端口',
+        col_note: '凭证类型',
         host_panel_other: '<strong class="text-cosmicore">不在列表里?</strong>企业邮 / 自建邮需要手填 host。常见参考:<span class="font-mono">@aliyun.com → imap.aliyun.com</span>、腾讯企业邮 (<span class="font-mono">imap.exmail.qq.com</span>)、网易企业邮 (<span class="font-mono">imap.qiye.163.com</span>)。',
         limit_label: '拉取多少封未读',
         fetch_btn: '拉取未读',
@@ -780,24 +783,48 @@ document.addEventListener('paste', (e) => {
 
 // ---------- Provider reference panel ----------
 const PROVIDER_ROWS = [
-    { domains: ['gmail.com', 'googlemail.com'], host: 'imap.gmail.com', port: 993 },
-    { domains: ['outlook.com', 'hotmail.com', 'live.com', 'office365.com'], host: 'outlook.office365.com', port: 993 },
-    { domains: ['icloud.com', 'me.com'], host: 'imap.mail.me.com', port: 993 },
-    { domains: ['yahoo.com'], host: 'imap.mail.yahoo.com', port: 993 },
-    { domains: ['qq.com', 'foxmail.com'], host: 'imap.qq.com', port: 993 },
-    { domains: ['163.com'], host: 'imap.163.com', port: 993 },
-    { domains: ['126.com'], host: 'imap.126.com', port: 993 },
-    { domains: ['sina.com'], host: 'imap.sina.com', port: 993 },
+    { domains: ['gmail.com', 'googlemail.com'], host: 'imap.gmail.com', port: 993, note: 'app_pass' },
+    { domains: ['outlook.com', 'hotmail.com', 'live.com'], host: '— blocked by Microsoft —', port: '—', note: 'outlook_dead' },
+    { domains: ['office365.com'], host: 'outlook.office365.com', port: 993, note: 'org_only' },
+    { domains: ['icloud.com', 'me.com'], host: 'imap.mail.me.com', port: 993, note: 'app_pass' },
+    { domains: ['yahoo.com'], host: 'imap.mail.yahoo.com', port: 993, note: 'app_pass' },
+    { domains: ['qq.com', 'foxmail.com'], host: 'imap.qq.com', port: 993, note: 'auth_code' },
+    { domains: ['163.com'], host: 'imap.163.com', port: 993, note: 'auth_code' },
+    { domains: ['126.com'], host: 'imap.126.com', port: 993, note: 'auth_code' },
+    { domains: ['sina.com'], host: 'imap.sina.com', port: 993, note: 'auth_code' },
 ];
+const NOTE_COPY = {
+    en: {
+        app_pass:    { label: 'App password', tone: 'ok' },
+        auth_code:   { label: 'Authorization code', tone: 'ok' },
+        outlook_dead:{ label: 'IMAP disabled by Microsoft (Sept 2024). Use OAuth.', tone: 'bad' },
+        org_only:    { label: 'Org admin must enable IMAP', tone: 'warn' },
+    },
+    zh: {
+        app_pass:    { label: '需应用专用密码', tone: 'ok' },
+        auth_code:   { label: '需邮箱授权码', tone: 'ok' },
+        outlook_dead:{ label: '微软已停用 IMAP (2024.9),需 OAuth', tone: 'bad' },
+        org_only:    { label: '需组织管理员开启 IMAP', tone: 'warn' },
+    },
+};
 function renderProviderTable() {
     const tbody = document.querySelector('#providerTable tbody');
     if (!tbody) return;
-    tbody.innerHTML = PROVIDER_ROWS.map(r => `
-        <tr class="border-t border-roboflow-100">
+    const copy = NOTE_COPY[state.lang];
+    tbody.innerHTML = PROVIDER_ROWS.map(r => {
+        const c = copy[r.note] || { label: '', tone: 'ok' };
+        const toneCls = c.tone === 'bad' ? 'bg-pushpin-50 text-pushpin-700'
+                      : c.tone === 'warn' ? 'bg-roboflow-100 text-roboflow-700'
+                      : 'bg-roboflow-50 text-roboflow-600';
+        const rowCls = r.note === 'outlook_dead' ? 'opacity-70 line-through decoration-pushpin-450/40' : '';
+        return `
+        <tr class="border-t border-roboflow-100 ${rowCls}">
             <td class="px-400 py-300 font-mono text-200">${r.domains.map(d => `@${d}`).join(' · ')}</td>
             <td class="px-400 py-300 font-mono text-200">${r.host}</td>
             <td class="px-400 py-300 font-mono text-roboflow-500">${r.port}</td>
-        </tr>`).join('');
+            <td class="px-400 py-300"><span class="text-100 font-semibold px-300 py-100 rounded-pill ${toneCls}">${c.label}</span></td>
+        </tr>`;
+    }).join('');
 }
 $('hostHelpBtn').addEventListener('click', () => {
     const panel = $('hostHelpPanel');
