@@ -210,14 +210,44 @@
                             <input type="password" id="imapPass" autocomplete="off" class="tk-input" placeholder="xxxx xxxx xxxx xxxx">
                         </div>
                         <div>
-                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="host_label"></label>
+                            <div class="flex items-baseline justify-between mb-200">
+                                <label class="block text-100 font-semibold text-roboflow-600" data-i18n="host_label"></label>
+                                <button type="button" id="hostHelpBtn" class="text-100 text-pushpin-450 hover:text-pushpin-600 font-semibold inline-flex items-center gap-100 transition-colors duration-500 ease-apple">
+                                    <span data-i18n="host_help_link"></span>
+                                    <svg class="w-300 h-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                                </button>
+                            </div>
                             <input type="text" id="imapHost" class="tk-input" placeholder="imap.gmail.com">
+                            <p class="text-100 text-roboflow-400 mt-200" data-i18n="host_hint"></p>
                         </div>
                         <div>
                             <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="limit_label"></label>
                             <input type="number" id="imapLimit" class="tk-input" min="1" max="20" value="5">
                         </div>
                     </div>
+
+                    <!-- Provider reference panel (hidden by default) -->
+                    <div id="hostHelpPanel" class="hidden mt-500 rounded-500 bg-roboflow-50 p-500 animate-fadeUp">
+                        <div class="flex items-center justify-between mb-400">
+                            <div class="text-200 font-semibold text-cosmicore" data-i18n="host_panel_h"></div>
+                            <button type="button" id="hostHelpClose" class="w-700 h-700 rounded-pill bg-mochimalist text-roboflow-500 hover:text-pushpin-450 shadow-floating transition-colors duration-500 ease-apple flex items-center justify-center" aria-label="close">×</button>
+                        </div>
+                        <p class="text-100 text-roboflow-600 mb-400 leading-relaxed" data-i18n="host_panel_intro"></p>
+                        <div class="overflow-x-auto rounded-300 bg-mochimalist shadow-floating">
+                            <table class="w-full text-100" id="providerTable">
+                                <thead>
+                                    <tr class="text-roboflow-500 tracking-widest uppercase">
+                                        <th class="text-left px-400 py-300 font-semibold" data-i18n="col_domain"></th>
+                                        <th class="text-left px-400 py-300 font-semibold" data-i18n="col_host"></th>
+                                        <th class="text-left px-400 py-300 font-semibold w-16" data-i18n="col_port"></th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-cosmicore"></tbody>
+                            </table>
+                        </div>
+                        <div class="mt-400 text-100 text-roboflow-500 leading-relaxed" data-i18n-html="host_panel_other"></div>
+                    </div>
+
                     <button id="fetchBtn"
                             class="w-full mt-500 bg-cosmicore text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="fetch_btn"></button>
 
@@ -390,7 +420,15 @@ const I18N = {
         inbox_safety_b: 'We connect to your inbox over IMAP using an app-specific password and pull up to N unread emails. Credentials are used only for the request and never stored. Use an app password (not your account password) on Gmail / Outlook / QQ.',
         email_label: 'Email address',
         apppass_label: 'App-specific password',
-        host_label: 'IMAP host (auto-detected if known)',
+        host_label: 'IMAP host',
+        host_help_link: 'See supported providers',
+        host_hint: 'Leave blank — auto-detected for major providers.',
+        host_panel_h: 'Supported providers',
+        host_panel_intro: 'Leave the IMAP host field blank if you use one of these providers — the server picks the right host automatically.',
+        col_domain: 'Email domain',
+        col_host: 'IMAP host',
+        col_port: 'Port',
+        host_panel_other: '<strong class="text-cosmicore">Not in the list?</strong> For corporate / self-hosted mail you must enter the host manually. Common ones: <span class="font-mono">@aliyun.com → imap.aliyun.com</span>, Tencent Exmail (<span class="font-mono">imap.exmail.qq.com</span>), Netease Enterprise (<span class="font-mono">imap.qiye.163.com</span>).',
         limit_label: 'How many unread to fetch',
         fetch_btn: 'Fetch unread',
         analyze_btn: 'Analyze with AI',
@@ -457,7 +495,15 @@ const I18N = {
         inbox_safety_b: '我们用 IMAP 协议 + 你的应用专用密码连接邮箱,拉取最近 N 封未读邮件。账号信息只用于本次请求,服务端不会存储。Gmail / Outlook / QQ 邮箱都需要使用应用专用密码,而不是登录密码。',
         email_label: '邮箱地址',
         apppass_label: '应用专用密码',
-        host_label: 'IMAP 服务器(主流邮箱自动识别)',
+        host_label: 'IMAP 服务器',
+        host_help_link: '查看支持的邮箱',
+        host_hint: '主流邮箱留空即可,后端自动识别。',
+        host_panel_h: '支持的邮箱供应商',
+        host_panel_intro: '使用以下邮箱时 IMAP 服务器一栏可留空,服务端按域名自动选择正确的 host。',
+        col_domain: '邮箱域名',
+        col_host: 'IMAP 服务器',
+        col_port: '端口',
+        host_panel_other: '<strong class="text-cosmicore">不在列表里?</strong>企业邮 / 自建邮需要手填 host。常见参考:<span class="font-mono">@aliyun.com → imap.aliyun.com</span>、腾讯企业邮 (<span class="font-mono">imap.exmail.qq.com</span>)、网易企业邮 (<span class="font-mono">imap.qiye.163.com</span>)。',
         limit_label: '拉取多少封未读',
         fetch_btn: '拉取未读',
         analyze_btn: 'AI 分析邮件',
@@ -731,6 +777,35 @@ document.addEventListener('paste', (e) => {
     }
     if (imgs.length) { addFiles(imgs); showToast(t('toast_pasted'), 'success'); }
 });
+
+// ---------- Provider reference panel ----------
+const PROVIDER_ROWS = [
+    { domains: ['gmail.com', 'googlemail.com'], host: 'imap.gmail.com', port: 993 },
+    { domains: ['outlook.com', 'hotmail.com', 'live.com', 'office365.com'], host: 'outlook.office365.com', port: 993 },
+    { domains: ['icloud.com', 'me.com'], host: 'imap.mail.me.com', port: 993 },
+    { domains: ['yahoo.com'], host: 'imap.mail.yahoo.com', port: 993 },
+    { domains: ['qq.com', 'foxmail.com'], host: 'imap.qq.com', port: 993 },
+    { domains: ['163.com'], host: 'imap.163.com', port: 993 },
+    { domains: ['126.com'], host: 'imap.126.com', port: 993 },
+    { domains: ['sina.com'], host: 'imap.sina.com', port: 993 },
+];
+function renderProviderTable() {
+    const tbody = document.querySelector('#providerTable tbody');
+    if (!tbody) return;
+    tbody.innerHTML = PROVIDER_ROWS.map(r => `
+        <tr class="border-t border-roboflow-100">
+            <td class="px-400 py-300 font-mono text-200">${r.domains.map(d => `@${d}`).join(' · ')}</td>
+            <td class="px-400 py-300 font-mono text-200">${r.host}</td>
+            <td class="px-400 py-300 font-mono text-roboflow-500">${r.port}</td>
+        </tr>`).join('');
+}
+$('hostHelpBtn').addEventListener('click', () => {
+    const panel = $('hostHelpPanel');
+    const open = panel.classList.contains('hidden');
+    if (open) { renderProviderTable(); panel.classList.remove('hidden'); }
+    else panel.classList.add('hidden');
+});
+$('hostHelpClose').addEventListener('click', () => $('hostHelpPanel').classList.add('hidden'));
 
 // ---------- IMAP fetch ----------
 $('imapEmail').addEventListener('input', () => {
