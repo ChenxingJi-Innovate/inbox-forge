@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Inbox Forge · Email Summarizer</title>
+    <title>Inbox Forge · AI Email Summarizer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -80,7 +80,6 @@
         }
         .tk-input::placeholder { color: #A5A5A5; }
         .tk-input:focus { box-shadow: 0 1px 2px rgba(17,17,17,0.04), inset 0 0 0 1.5px #E60023, 0 0 0 4px rgba(230,0,35,0.12); }
-        .tk-input-pill { border-radius: 999px; padding-left: 20px; padding-right: 20px; }
         textarea.tk-input { line-height: 1.7; resize: vertical; }
 
         .source-tab[data-active="true"] { background:#111111; color:#fff; }
@@ -113,7 +112,16 @@
                 <button id="navList" class="px-400 py-200 rounded-pill text-roboflow-700 hover:bg-roboflow-100 font-semibold transition-all duration-500 ease-apple" data-i18n="nav_records"></button>
                 <button id="navHome" class="px-400 py-200 rounded-pill text-roboflow-700 hover:bg-roboflow-100 font-semibold transition-all duration-500 ease-apple hidden" data-i18n="nav_home"></button>
                 <button id="navDownload" class="px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="nav_download"></button>
-                <button id="navClear" class="px-300 py-200 rounded-pill text-roboflow-500 hover:text-pushpin-450 hover:bg-pushpin-50 transition-all duration-500 ease-apple" data-i18n="clear"></button>
+
+                <!-- Auth area -->
+                <div id="authBox" class="flex items-center gap-200">
+                    <button id="signInGoogle" class="hidden px-400 py-200 rounded-pill bg-mochimalist shadow-floating text-roboflow-700 font-semibold hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="signin_google"></button>
+                    <button id="signInMs" class="hidden px-400 py-200 rounded-pill bg-mochimalist shadow-floating text-roboflow-700 font-semibold hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="signin_ms"></button>
+                    <div id="userPill" class="hidden flex items-center gap-200 px-300 py-200 rounded-pill bg-roboflow-50">
+                        <span id="userName" class="text-roboflow-700 font-semibold"></span>
+                        <button id="signOutBtn" class="text-roboflow-500 hover:text-pushpin-450 transition-colors duration-500 ease-apple" data-i18n="signout">×</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -125,23 +133,21 @@
             <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold mb-300">AI · Email · Excel</div>
             <h1 class="display-h1 text-cosmicore" data-i18n-html="hero_title"></h1>
             <p class="mt-500 text-300 text-roboflow-600 max-w-xl" data-i18n="hero_sub"></p>
-            <p class="mt-300 text-100 text-roboflow-500 max-w-xl" data-i18n="hero_note"></p>
         </div>
 
         <!-- Health badge -->
         <div id="healthBadge" class="hidden mb-500 px-500 py-400 rounded-400 bg-pushpin-50 text-pushpin-700 text-200 font-semibold shadow-floating"></div>
+        <div id="oauthBanner" class="hidden mb-500 px-500 py-400 rounded-400 bg-cosmicore text-mochimalist text-200 font-semibold shadow-floating"></div>
 
-        <!-- =============== HOME =============== -->
+        <!-- HOME -->
         <div id="homeView">
 
-            <!-- Source tabs -->
             <div class="flex p-100 bg-mochimalist rounded-pill shadow-floating mb-500 max-w-md text-100">
                 <button class="source-tab flex-1 py-300 px-400 rounded-pill font-semibold transition-all duration-500 ease-apple" data-source="upload" data-active="true" data-i18n="src_upload"></button>
                 <button class="source-tab flex-1 py-300 px-400 rounded-pill font-semibold transition-all duration-500 ease-apple" data-source="text" data-active="false" data-i18n="src_text"></button>
                 <button class="source-tab flex-1 py-300 px-400 rounded-pill font-semibold transition-all duration-500 ease-apple" data-source="inbox" data-active="false" data-i18n="src_inbox"></button>
             </div>
 
-            <!-- Step indicator -->
             <div id="stepBar" class="flex items-center gap-200 mb-500 text-100">
                 <span data-step="1" class="step-pill px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold" data-i18n="step1"></span>
                 <span class="h-100 w-600 bg-roboflow-200 rounded-pill"></span>
@@ -150,10 +156,9 @@
                 <span data-step="3" class="step-pill px-400 py-200 rounded-pill bg-mochimalist/80 backdrop-blur-md text-roboflow-500 font-semibold shadow-glass" data-i18n="step3"></span>
             </div>
 
-            <!-- Step 1: Source -->
             <div id="step1" class="bg-mochimalist rounded-600 shadow-floating p-700 mb-500 animate-fadeUp">
 
-                <!-- == Upload pane == -->
+                <!-- Upload pane -->
                 <div data-pane="upload">
                     <div class="flex items-center gap-300 mb-500">
                         <span class="step-num text-500 text-pushpin-450">01.</span>
@@ -177,7 +182,7 @@
                     <div id="thumbStrip" class="hidden mt-400 flex flex-wrap gap-300"></div>
                 </div>
 
-                <!-- == Text pane == -->
+                <!-- Text pane -->
                 <div data-pane="text" class="hidden">
                     <div class="flex items-center gap-300 mb-500">
                         <span class="step-num text-500 text-pushpin-450">01.</span>
@@ -190,72 +195,38 @@
                     <p class="text-100 text-roboflow-400 mt-200" data-i18n="paste_hint"></p>
                 </div>
 
-                <!-- == Inbox pane == -->
+                <!-- Inbox pane (OAuth-driven) -->
                 <div data-pane="inbox" class="hidden">
                     <div class="flex items-center gap-300 mb-500">
                         <span class="step-num text-500 text-pushpin-450">01.</span>
                         <h2 class="text-300 font-semibold text-cosmicore" data-i18n="inbox_h"></h2>
                     </div>
-                    <div class="px-400 py-300 rounded-300 bg-roboflow-50 text-100 text-roboflow-600 mb-500 leading-relaxed">
-                        <div class="font-semibold text-cosmicore mb-100" data-i18n="inbox_safety_h"></div>
-                        <div data-i18n="inbox_safety_b"></div>
-                    </div>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-400">
-                        <div>
-                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="email_label"></label>
-                            <input type="email" id="imapEmail" autocomplete="email" class="tk-input" placeholder="you@gmail.com">
+                    <div id="inboxNotSignedIn" class="hidden">
+                        <p class="text-200 text-roboflow-600 mb-500 leading-relaxed" data-i18n="inbox_signin_copy"></p>
+                        <div class="flex flex-col sm:flex-row gap-300">
+                            <button class="signin-google flex-1 inline-flex items-center justify-center gap-300 bg-mochimalist py-400 rounded-pill font-semibold text-200 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple">
+                                <svg class="w-500 h-500" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
+                                <span data-i18n="signin_google"></span>
+                            </button>
+                            <button class="signin-ms flex-1 inline-flex items-center justify-center gap-300 bg-mochimalist py-400 rounded-pill font-semibold text-200 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple">
+                                <svg class="w-500 h-500" viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>
+                                <span data-i18n="signin_ms"></span>
+                            </button>
                         </div>
-                        <div>
-                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="apppass_label"></label>
-                            <input type="password" id="imapPass" autocomplete="off" class="tk-input" placeholder="xxxx xxxx xxxx xxxx">
-                        </div>
-                        <div>
-                            <div class="flex items-baseline justify-between mb-200">
-                                <label class="block text-100 font-semibold text-roboflow-600" data-i18n="host_label"></label>
-                                <button type="button" id="hostHelpBtn" class="text-100 text-pushpin-450 hover:text-pushpin-600 font-semibold inline-flex items-center gap-100 transition-colors duration-500 ease-apple">
-                                    <span data-i18n="host_help_link"></span>
-                                    <svg class="w-300 h-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                                </button>
-                            </div>
-                            <input type="text" id="imapHost" class="tk-input" placeholder="imap.gmail.com">
-                            <p class="text-100 text-roboflow-400 mt-200" data-i18n="host_hint"></p>
-                        </div>
-                        <div>
-                            <label class="block text-100 font-semibold text-roboflow-600 mb-200" data-i18n="limit_label"></label>
-                            <input type="number" id="imapLimit" class="tk-input" min="1" max="20" value="5">
-                        </div>
+                        <p class="text-100 text-roboflow-400 mt-400 leading-relaxed" data-i18n="inbox_safety"></p>
                     </div>
 
-                    <!-- Provider reference panel (hidden by default) -->
-                    <div id="hostHelpPanel" class="hidden mt-500 rounded-500 bg-roboflow-50 p-500 animate-fadeUp">
-                        <div class="flex items-center justify-between mb-400">
-                            <div class="text-200 font-semibold text-cosmicore" data-i18n="host_panel_h"></div>
-                            <button type="button" id="hostHelpClose" class="w-700 h-700 rounded-pill bg-mochimalist text-roboflow-500 hover:text-pushpin-450 shadow-floating transition-colors duration-500 ease-apple flex items-center justify-center" aria-label="close">×</button>
+                    <div id="inboxSignedIn" class="hidden">
+                        <div id="connList" class="grid gap-300 mb-500"></div>
+                        <div class="flex gap-300">
+                            <button class="signin-google flex-1 px-400 py-300 rounded-pill bg-mochimalist text-roboflow-700 font-semibold text-100 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="add_google"></button>
+                            <button class="signin-ms flex-1 px-400 py-300 rounded-pill bg-mochimalist text-roboflow-700 font-semibold text-100 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="add_ms"></button>
                         </div>
-                        <p class="text-100 text-roboflow-600 mb-400 leading-relaxed" data-i18n="host_panel_intro"></p>
-                        <div class="overflow-x-auto rounded-300 bg-mochimalist shadow-floating">
-                            <table class="w-full text-100" id="providerTable">
-                                <thead>
-                                    <tr class="text-roboflow-500 tracking-widest uppercase">
-                                        <th class="text-left px-400 py-300 font-semibold" data-i18n="col_domain"></th>
-                                        <th class="text-left px-400 py-300 font-semibold" data-i18n="col_host"></th>
-                                        <th class="text-left px-400 py-300 font-semibold w-16" data-i18n="col_port"></th>
-                                        <th class="text-left px-400 py-300 font-semibold" data-i18n="col_note"></th>
-                                    </tr>
-                                </thead>
-                                <tbody class="text-cosmicore"></tbody>
-                            </table>
-                        </div>
-                        <div class="mt-400 text-100 text-roboflow-500 leading-relaxed" data-i18n-html="host_panel_other"></div>
+
+                        <div id="fetchResults" class="hidden mt-500"></div>
                     </div>
-
-                    <button id="fetchBtn"
-                            class="w-full mt-500 bg-cosmicore text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="fetch_btn"></button>
-
-                    <div id="fetchResults" class="hidden mt-500"></div>
                 </div>
 
-                <!-- Analyze button is shared between upload + text -->
                 <button id="analyzeBtn" disabled
                         class="w-full mt-500 bg-pushpin-450 text-mochimalist py-400 rounded-pill font-semibold text-200 disabled:bg-roboflow-200 disabled:text-roboflow-400 disabled:cursor-not-allowed disabled:hover:translate-y-0 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="analyze_btn"></button>
             </div>
@@ -317,7 +288,6 @@
                 </div>
             </div>
 
-            <!-- Step 3: Success -->
             <div id="step3" class="hidden bg-mochimalist rounded-600 shadow-lift p-800 mb-500 animate-fadeUp" style="box-shadow: 0 4px 8px rgba(17,17,17,0.08), 0 24px 48px rgba(17,17,17,0.10), inset 0 0 0 1.5px rgba(230,0,35,0.18);">
                 <div class="flex items-start gap-400">
                     <div class="w-1200 h-1200 bg-pushpin-450 rounded-pill flex items-center justify-center flex-shrink-0 shadow-raised">
@@ -336,7 +306,7 @@
             </div>
         </div>
 
-        <!-- =============== LIST view =============== -->
+        <!-- LIST view -->
         <div id="listView" class="hidden animate-fadeUp">
             <div class="flex items-end justify-between mb-500">
                 <div>
@@ -360,7 +330,6 @@
     </div>
 </div>
 
-<!-- Loading -->
 <div id="loading" class="hidden fixed inset-0 bg-cosmicore/30 backdrop-blur-md flex items-center justify-center z-50">
     <div class="bg-mochimalist rounded-500 p-700 shadow-lift min-w-[320px] animate-fadeUp">
         <div class="space-y-300">
@@ -372,7 +341,6 @@
     </div>
 </div>
 
-<!-- Toast -->
 <div id="toast" class="hidden fixed top-600 right-600 px-500 py-400 rounded-pill shadow-lift max-w-md z-50 text-200 font-semibold backdrop-blur-xl"></div>
 
 <script>
@@ -381,28 +349,28 @@ const RECORDS_KEY = 'inbox-forge.records.v1';
 
 const state = {
     fileBlobs: [],
-    customers: [],     // derived from records
     lang: (localStorage.getItem('lang') || 'en').toLowerCase() === 'zh' ? 'zh' : 'en',
     source: 'upload',
-    fetched: [],       // emails fetched from IMAP awaiting selection
-    records: JSON.parse(localStorage.getItem(RECORDS_KEY) || '[]'),
+    user: null,
+    connections: [],
+    fetched: [],
+    records: [],
 };
-
-function persistRecords() {
-    try { localStorage.setItem(RECORDS_KEY, JSON.stringify(state.records)); } catch (_) {}
-}
 
 // ---------- i18n ----------
 const I18N = {
     en: {
-        brand_tagline: 'Email Summarizer',
+        brand_tagline: 'AI Email Summarizer',
         nav_records: 'Records',
         nav_home: 'Back',
         nav_download: 'Download Excel',
-        clear: 'Clear all',
+        signin_google: 'Sign in with Google',
+        signin_ms: 'Sign in with Microsoft',
+        add_google: '+ Connect another Google',
+        add_ms: '+ Connect Microsoft',
+        signout: 'Sign out',
         hero_title: 'Every email,<br><span class="font-display italic text-pushpin-450">forged</span> into one row.',
-        hero_sub: 'Upload screenshots, paste plain text, or pull unread mail straight from your inbox. Gemini extracts the essentials.',
-        hero_note: 'Stateless tool. Records live in your browser only. No accounts, no server-side storage.',
+        hero_sub: 'Upload screenshots, paste text, or sign in with Gmail / Outlook to pull unread email automatically. Gemini extracts the essentials.',
         src_upload: 'Screenshot',
         src_text: 'Paste text',
         src_inbox: 'Connect inbox',
@@ -411,28 +379,14 @@ const I18N = {
         step3: '③ Save',
         upload_h: 'Upload screenshots',
         dropzone_main: 'Click, drag, or paste with <span class="font-mono px-200 py-100 bg-mochimalist rounded-100 text-200 shadow-floating">Cmd+V</span>',
-        dropzone_hint: 'PNG / JPG · multiple shots OK if the email is long · max 8 / 40 MB',
+        dropzone_hint: 'PNG / JPG · multiple shots OK · max 8 / 40 MB',
         text_h: 'Paste email text',
         paste_label: 'Email body',
         paste_placeholder: 'Paste plain-text email body here...',
         paste_hint: 'Ideal for emails too long to screenshot, or forwarded threads.',
         inbox_h: 'Connect your inbox',
-        inbox_safety_h: 'How this works',
-        inbox_safety_b: 'We connect to your inbox over IMAP using an app-specific password and pull up to N unread emails. Credentials are used only for the request and never stored. Use an app password (not your account password) on Gmail / Outlook / QQ.',
-        email_label: 'Email address',
-        apppass_label: 'App-specific password',
-        host_label: 'IMAP host',
-        host_help_link: 'See supported providers',
-        host_hint: 'Leave blank — auto-detected for major providers.',
-        host_panel_h: 'Supported providers',
-        host_panel_intro: 'Leave the IMAP host field blank if you use one of these providers — the server picks the right host automatically.',
-        col_domain: 'Email domain',
-        col_host: 'IMAP host',
-        col_port: 'Port',
-        col_note: 'Credential',
-        host_panel_other: '<strong class="text-cosmicore">Not in the list?</strong> For corporate / self-hosted mail you must enter the host manually. Common ones: <span class="font-mono">@aliyun.com → imap.aliyun.com</span>, Tencent Exmail (<span class="font-mono">imap.exmail.qq.com</span>), Netease Enterprise (<span class="font-mono">imap.qiye.163.com</span>).',
-        limit_label: 'How many unread to fetch',
-        fetch_btn: 'Fetch unread',
+        inbox_signin_copy: 'Sign in once and we will pull unread email straight from your mailbox over the official Gmail or Microsoft Graph API. Standard OAuth — your password never leaves Google or Microsoft, we receive a read-only access token.',
+        inbox_safety: 'Tokens are encrypted at rest. We request gmail.readonly / Mail.Read only. You can disconnect anytime.',
         analyze_btn: 'Analyze with AI',
         summary_h: 'Core summary',
         editable: 'editable',
@@ -446,39 +400,46 @@ const I18N = {
         save_btn: 'Save to records',
         reset_btn: 'Reset',
         saved_h: 'Saved',
-        saved_sub: 'Stored in your browser. Click Download Excel to export the whole archive.',
+        saved_sub: 'Stored to your archive. Click Download Excel to export everything.',
         do_another: 'Process another',
         see_records: 'See records',
         archive_h: 'My <span class="font-display italic">email</span> archive',
         empty_records: 'No records yet. Process your first email to get started.',
-        footer: 'Powered by <span class="font-display italic">Gemini 2.5 Flash</span> · openpyxl',
+        footer: 'Powered by <span class="font-display italic">Gemini 2.5 Flash</span> · Postgres · OAuth 2.0',
         loading_default: 'Working...',
         loading_analyze: 'AI is analyzing the email...',
-        loading_fetch: 'Connecting to your inbox...',
+        loading_fetch: 'Pulling unread email...',
         loading_excel: 'Building Excel...',
+        loading_saving: 'Saving...',
         toast_pasted: 'Pasted image',
         toast_need_image: 'Only image files are supported',
         toast_need_name: 'Customer name is required',
         toast_no_records: 'No records to download',
-        toast_cleared: 'All records cleared',
+        toast_signin_required: 'Please sign in first',
         toast_no_emails: 'No unread emails found',
-        toast_confirm_clear: 'Clear all records? This cannot be undone.',
         record_count: (n) => `${n} record${n === 1 ? '' : 's'}`,
         shot_count: (n) => `${n} shot${n === 1 ? '' : 's'} selected`,
-        no_match: 'No match.',
+        unread_count: (n) => `${n} unread`,
         status_options: ['Pending', 'In progress', 'Done'],
         status_pending_default: 'Pending',
         todo_label: 'TODO',
+        oauth_signed_in: (provider) => `Signed in via ${provider}.`,
+        oauth_error: (e) => `Sign-in error: ${e}`,
+        fetch_unread: 'Fetch unread',
+        disconnect: 'Disconnect',
     },
     zh: {
-        brand_tagline: '邮件汇总工坊',
+        brand_tagline: 'AI 邮件汇总',
         nav_records: '我的记录',
         nav_home: '返回',
         nav_download: '下载 Excel',
-        clear: '清空',
+        signin_google: '使用 Google 登录',
+        signin_ms: '使用 Microsoft 登录',
+        add_google: '+ 连接另一个 Google',
+        add_ms: '+ 连接 Microsoft',
+        signout: '退出',
         hero_title: '把每封邮件,<br><span class="font-display italic text-pushpin-450">炼成</span>一行档案。',
-        hero_sub: '上传截图、粘贴文本,或者直接从你的邮箱拉未读邮件。Gemini 提取最关键的信息。',
-        hero_note: '一次性工具,记录只存在你的浏览器里。没有账号,服务端不留任何数据。',
+        hero_sub: '上传截图、粘贴文本,或用 Gmail / Outlook 登录直接拉取未读邮件。Gemini 提取最关键的信息。',
         src_upload: '截图',
         src_text: '粘贴文本',
         src_inbox: '连接邮箱',
@@ -487,28 +448,14 @@ const I18N = {
         step3: '③ 保存',
         upload_h: '上传邮件截图',
         dropzone_main: '点击,拖拽,或 <span class="font-mono px-200 py-100 bg-mochimalist rounded-100 text-200 shadow-floating">Cmd+V</span> 粘贴',
-        dropzone_hint: 'PNG / JPG,长邮件可上传多张,最多 8 张 / 总计 40 MB',
+        dropzone_hint: 'PNG / JPG,长邮件可上传多张,最多 8 张 / 40 MB',
         text_h: '粘贴邮件正文',
         paste_label: '邮件正文',
         paste_placeholder: '把邮件正文粘贴到这里...',
         paste_hint: '适合截图截不下的长邮件,或转发邮件。',
         inbox_h: '连接你的邮箱',
-        inbox_safety_h: '工作方式',
-        inbox_safety_b: '我们用 IMAP 协议 + 你的应用专用密码连接邮箱,拉取最近 N 封未读邮件。账号信息只用于本次请求,服务端不会存储。Gmail / Outlook / QQ 邮箱都需要使用应用专用密码,而不是登录密码。',
-        email_label: '邮箱地址',
-        apppass_label: '应用专用密码',
-        host_label: 'IMAP 服务器',
-        host_help_link: '查看支持的邮箱',
-        host_hint: '主流邮箱留空即可,后端自动识别。',
-        host_panel_h: '支持的邮箱供应商',
-        host_panel_intro: '使用以下邮箱时 IMAP 服务器一栏可留空,服务端按域名自动选择正确的 host。',
-        col_domain: '邮箱域名',
-        col_host: 'IMAP 服务器',
-        col_port: '端口',
-        col_note: '凭证类型',
-        host_panel_other: '<strong class="text-cosmicore">不在列表里?</strong>企业邮 / 自建邮需要手填 host。常见参考:<span class="font-mono">@aliyun.com → imap.aliyun.com</span>、腾讯企业邮 (<span class="font-mono">imap.exmail.qq.com</span>)、网易企业邮 (<span class="font-mono">imap.qiye.163.com</span>)。',
-        limit_label: '拉取多少封未读',
-        fetch_btn: '拉取未读',
+        inbox_signin_copy: '登录一次,后续我们直接通过 Gmail 或 Microsoft Graph 官方 API 拉取你的未读邮件。标准 OAuth 流程,密码全程在 Google / Microsoft 那边,我们只拿到一个只读 token。',
+        inbox_safety: 'Token 加密存储。我们只申请 gmail.readonly / Mail.Read 权限,可随时断开连接。',
         analyze_btn: 'AI 分析邮件',
         summary_h: '核心摘要',
         editable: '可编辑',
@@ -522,29 +469,33 @@ const I18N = {
         save_btn: '保存到记录',
         reset_btn: '重来',
         saved_h: '已保存',
-        saved_sub: '记录存在你的浏览器里。点 "下载 Excel" 把整本档案导出。',
+        saved_sub: '记录入档,点 "下载 Excel" 可导出整本档案。',
         do_another: '处理下一封',
         see_records: '看记录',
         archive_h: '我的<span class="font-display italic">邮件</span>记录',
         empty_records: '还没有记录,去处理第一封邮件吧。',
-        footer: 'Powered by <span class="font-display italic">Gemini 2.5 Flash</span> · openpyxl',
+        footer: 'Powered by <span class="font-display italic">Gemini 2.5 Flash</span> · Postgres · OAuth 2.0',
         loading_default: '处理中...',
         loading_analyze: 'AI 正在分析邮件...',
-        loading_fetch: '正在连接你的邮箱...',
+        loading_fetch: '正在拉取未读邮件...',
         loading_excel: '正在生成 Excel...',
+        loading_saving: '保存中...',
         toast_pasted: '已粘贴图片',
         toast_need_image: '只支持图片文件',
         toast_need_name: '请填写客户名',
         toast_no_records: '还没有记录可以下载',
-        toast_cleared: '记录已清空',
+        toast_signin_required: '请先登录',
         toast_no_emails: '没有未读邮件',
-        toast_confirm_clear: '清空所有记录?此操作不可恢复。',
         record_count: (n) => `共 ${n} 条`,
         shot_count: (n) => `已选 ${n} 张`,
-        no_match: '无匹配。',
+        unread_count: (n) => `${n} 封未读`,
         status_options: ['待处理', '跟进中', '已完成'],
         status_pending_default: '待处理',
         todo_label: '跟进',
+        oauth_signed_in: (p) => `已通过 ${p} 登录。`,
+        oauth_error: (e) => `登录失败: ${e}`,
+        fetch_unread: '拉取未读',
+        disconnect: '断开',
     },
 };
 const t = (key) => (I18N[state.lang] && I18N[state.lang][key]) || key;
@@ -588,15 +539,24 @@ function applyI18n() {
             : 'lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple text-roboflow-500 hover:text-cosmicore';
     });
 }
+
 function setLang(lang) {
     state.lang = lang === 'zh' ? 'zh' : 'en';
     localStorage.setItem('lang', state.lang);
     applyI18n();
+    if (state.user) renderConnections();
     if (!$('listView').classList.contains('hidden')) renderRecords();
 }
+
 document.addEventListener('click', (e) => {
     const lb = e.target.closest('.lang-btn'); if (lb) setLang(lb.dataset.lang);
     const tb = e.target.closest('.source-tab'); if (tb) setSource(tb.dataset.source);
+    if (e.target.closest('.signin-google') || e.target.closest('#signInGoogle')) {
+        window.location.href = '/api/auth/google/start';
+    }
+    if (e.target.closest('.signin-ms') || e.target.closest('#signInMs')) {
+        window.location.href = '/api/auth/microsoft/start';
+    }
 });
 
 // ---------- Source tabs ----------
@@ -604,18 +564,184 @@ function setSource(src) {
     state.source = src;
     document.querySelectorAll('.source-tab').forEach(b => b.dataset.active = String(b.dataset.source === src));
     document.querySelectorAll('[data-pane]').forEach(p => p.classList.toggle('hidden', p.dataset.pane !== src));
-    // Analyze button hidden when on inbox pane
     $('analyzeBtn').classList.toggle('hidden', src === 'inbox');
     refreshAnalyzeBtn();
+    if (src === 'inbox') renderInboxPane();
+}
+
+// ---------- Auth ----------
+async function loadMe() {
+    try {
+        const r = await fetch('/api/me');
+        const data = await r.json();
+        state.user = data.user;
+        state.connections = data.connections || [];
+    } catch (_) {
+        state.user = null; state.connections = [];
+    }
+    renderAuthArea();
+    renderInboxPane();
+    if (state.user) await loadServerRecords();
+    else loadLocalRecords();
+}
+
+function renderAuthArea() {
+    if (state.user) {
+        $('signInGoogle').classList.add('hidden');
+        $('signInMs').classList.add('hidden');
+        $('userPill').classList.remove('hidden');
+        $('userName').textContent = state.user.name || state.user.email;
+    } else {
+        $('signInGoogle').classList.remove('hidden');
+        $('signInMs').classList.remove('hidden');
+        $('userPill').classList.add('hidden');
+    }
+}
+
+$('signOutBtn').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    state.user = null; state.connections = []; state.records = []; state.fetched = [];
+    renderAuthArea();
+    renderInboxPane();
+    loadLocalRecords();
+});
+
+// ---------- OAuth banner from query string ----------
+function readQueryFlash() {
+    const url = new URL(window.location.href);
+    const signed = url.searchParams.get('signed_in');
+    const err = url.searchParams.get('oauth_error');
+    if (signed) {
+        const banner = $('oauthBanner');
+        banner.textContent = t('oauth_signed_in')(signed === 'google' ? 'Google' : 'Microsoft');
+        banner.classList.remove('hidden');
+        setTimeout(() => banner.classList.add('hidden'), 4000);
+    }
+    if (err) {
+        const banner = $('healthBadge');
+        banner.textContent = t('oauth_error')(err);
+        banner.classList.remove('hidden');
+        setTimeout(() => banner.classList.add('hidden'), 5000);
+    }
+    if (signed || err) {
+        url.searchParams.delete('signed_in');
+        url.searchParams.delete('oauth_error');
+        window.history.replaceState({}, '', url.pathname + url.hash);
+    }
+}
+
+// ---------- Inbox pane render ----------
+function renderInboxPane() {
+    const signedIn = !!state.user;
+    $('inboxNotSignedIn').classList.toggle('hidden', signedIn);
+    $('inboxSignedIn').classList.toggle('hidden', !signedIn);
+    if (signedIn) renderConnections();
+}
+
+function renderConnections() {
+    const list = $('connList');
+    if (!state.connections.length) {
+        list.innerHTML = '';
+        return;
+    }
+    list.innerHTML = state.connections.map(c => `
+        <div class="bg-mochimalist rounded-500 shadow-floating p-500 flex items-center justify-between gap-400">
+            <div class="flex items-center gap-300 min-w-0">
+                <div class="w-1000 h-1000 rounded-pill bg-roboflow-50 flex items-center justify-center flex-shrink-0">
+                    ${c.provider === 'google'
+                        ? '<svg viewBox="0 0 24 24" class="w-500 h-500"><path fill="#4285F4" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>'
+                        : '<svg viewBox="0 0 23 23" class="w-500 h-500"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H1z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>'}
+                </div>
+                <div class="min-w-0">
+                    <div class="text-200 font-semibold text-cosmicore truncate">${escapeHtml(c.provider_email)}</div>
+                    <div class="text-100 text-roboflow-500 capitalize">${escapeHtml(c.provider)}</div>
+                </div>
+            </div>
+            <div class="flex items-center gap-200 flex-shrink-0">
+                <button class="fetch-btn px-400 py-300 rounded-pill bg-cosmicore text-mochimalist font-semibold text-100 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-conn-id="${c.id}">${escapeHtml(t('fetch_unread'))}</button>
+                <button class="disc-btn px-300 py-300 rounded-pill bg-mochimalist text-roboflow-500 hover:text-pushpin-450 font-semibold text-100 shadow-floating transition-all duration-500 ease-apple" data-conn-id="${c.id}" title="${escapeHtml(t('disconnect'))}">×</button>
+            </div>
+        </div>`).join('');
+
+    list.querySelectorAll('.fetch-btn').forEach(b => b.addEventListener('click', () => fetchUnread(Number(b.dataset.connId))));
+    list.querySelectorAll('.disc-btn').forEach(b => b.addEventListener('click', () => disconnectInbox(Number(b.dataset.connId))));
+}
+
+async function disconnectInbox(connId) {
+    await fetch(`/api/inbox/${connId}`, { method: 'DELETE' });
+    state.connections = state.connections.filter(c => c.id !== connId);
+    state.fetched = [];
+    renderConnections();
+    renderFetched();
+}
+
+async function fetchUnread(connId) {
+    $('loading').classList.remove('hidden');
+    $('loadingText').textContent = t('loading_fetch');
+    try {
+        const r = await fetch(`/api/inbox/${connId}/unread?limit=10`);
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.detail || 'Fetch failed');
+        state.fetched = data.emails || [];
+        renderFetched();
+        if (!state.fetched.length) showToast(t('toast_no_emails'));
+    } catch (e) {
+        showToast(String(e.message || e));
+    } finally {
+        $('loading').classList.add('hidden');
+    }
+}
+
+function renderFetched() {
+    const box = $('fetchResults');
+    if (!state.fetched.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+    box.classList.remove('hidden');
+    box.innerHTML = `
+        <div class="text-100 font-semibold text-roboflow-600 tracking-widest uppercase mb-300">${escapeHtml(t('unread_count')(state.fetched.length))}</div>
+        <div class="grid gap-300">` + state.fetched.map((m, i) => `
+            <button data-idx="${i}" class="fetched-item text-left bg-roboflow-50 hover:bg-pushpin-0 rounded-400 p-400 transition-all duration-500 ease-apple">
+                <div class="flex items-center justify-between gap-300 mb-200">
+                    <div class="text-200 font-semibold text-cosmicore truncate">${escapeHtml(m.subject || '(no subject)')}</div>
+                    <div class="text-100 text-roboflow-400 font-mono whitespace-nowrap">${escapeHtml((m.date || '').slice(0, 16))}</div>
+                </div>
+                <div class="text-100 text-roboflow-500 truncate">${escapeHtml(m.from_name || m.from_addr || '')} · ${escapeHtml((m.body || '').slice(0, 120))}</div>
+            </button>`).join('') + `</div>`;
+    box.querySelectorAll('.fetched-item').forEach(btn => {
+        btn.addEventListener('click', () => analyzeFetched(Number(btn.dataset.idx)));
+    });
+}
+
+async function analyzeFetched(idx) {
+    const m = state.fetched[idx]; if (!m) return;
+    $('loading').classList.remove('hidden');
+    $('loadingText').textContent = t('loading_analyze');
+    const fd = new FormData();
+    const composed = `Subject: ${m.subject}\nFrom: ${m.from_name} <${m.from_addr}>\nDate: ${m.date}\n\n${m.body}`;
+    fd.append('text', composed);
+    fd.append('lang', state.lang);
+    try {
+        const res = await fetch('/api/analyze', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.detail || 'Analyze failed');
+        applyAnalysis(data);
+    } catch (e) {
+        showToast(String(e.message || e));
+    } finally {
+        $('loading').classList.add('hidden');
+    }
 }
 
 // ---------- Health ----------
 async function checkHealth() {
     try {
         const h = await (await fetch('/api/health')).json();
-        if (!h.gemini_key_set) {
+        const missing = [];
+        if (!h.gemini_key_set) missing.push('GEMINI_API_KEY');
+        if (!h.db_set) missing.push('DATABASE_URL');
+        if (!h.google_oauth_set && !h.microsoft_oauth_set) missing.push('OAuth client (Google or Microsoft)');
+        if (missing.length) {
             const b = $('healthBadge');
-            b.textContent = state.lang === 'zh' ? '服务端未配置 GEMINI_API_KEY' : 'Server is missing GEMINI_API_KEY';
+            b.textContent = (state.lang === 'zh' ? '服务端缺少配置: ' : 'Server is missing: ') + missing.join(', ');
             b.classList.remove('hidden');
         }
     } catch (_) {}
@@ -625,11 +751,6 @@ async function checkHealth() {
 $('navList').addEventListener('click', () => showList());
 $('navHome').addEventListener('click', () => showHome());
 $('navDownload').addEventListener('click', downloadExcel);
-$('navClear').addEventListener('click', () => {
-    if (!state.records.length) { showToast(t('toast_no_records')); return; }
-    if (!confirm(t('toast_confirm_clear'))) return;
-    state.records = []; persistRecords(); renderRecords(); showToast(t('toast_cleared'), 'success');
-});
 
 function showHome() {
     $('homeView').classList.remove('hidden');
@@ -645,10 +766,28 @@ function showList() {
     renderRecords();
 }
 
-// ---------- Records ----------
+// ---------- Records (server when signed in, localStorage otherwise) ----------
+function loadLocalRecords() {
+    try { state.records = JSON.parse(localStorage.getItem(RECORDS_KEY) || '[]'); }
+    catch (_) { state.records = []; }
+}
+function persistLocalRecords() {
+    try { localStorage.setItem(RECORDS_KEY, JSON.stringify(state.records)); } catch (_) {}
+}
+async function loadServerRecords() {
+    try {
+        const r = await fetch('/api/records');
+        const data = await r.json();
+        state.records = (data.records || []).map(r => ({
+            id: r.id, customer_name: r.customer_name, company: r.company || '',
+            date: r.date || '', summary: r.summary || '', action_items: r.action_items || '',
+            status: r.status || '', created_at: r.created_at || '',
+        }));
+    } catch (_) { state.records = []; }
+}
+
 function renderRecords() {
-    const list = $('recordsList');
-    const empty = $('recordsEmpty');
+    const list = $('recordsList'); const empty = $('recordsEmpty');
     const records = state.records;
     $('recordCount').textContent = records.length ? t('record_count')(records.length) : '';
     if (!records.length) { list.innerHTML = ''; empty.classList.remove('hidden'); return; }
@@ -670,7 +809,7 @@ function renderRecords() {
                 <div class="flex items-center gap-200 text-100 flex-shrink-0">
                     <span class="text-roboflow-400 font-mono">${escapeHtml(r.date)}</span>
                     <span class="px-300 py-100 rounded-pill font-semibold ${badge}">${escapeHtml(r.status || t('status_pending_default'))}</span>
-                    <button class="del-rec text-roboflow-400 hover:text-pushpin-450 px-200 transition-colors duration-500 ease-apple" data-idx="${i}" aria-label="delete">×</button>
+                    <button class="del-rec text-roboflow-400 hover:text-pushpin-450 px-200 transition-colors duration-500 ease-apple" data-idx="${i}" data-id="${r.id || ''}" aria-label="delete">×</button>
                 </div>
             </div>
             <div class="text-200 text-roboflow-700 leading-relaxed whitespace-pre-wrap">${escapeHtml(r.summary)}</div>
@@ -678,9 +817,16 @@ function renderRecords() {
         </div>`;
     }).join('');
     list.querySelectorAll('.del-rec').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', async () => {
             const i = Number(btn.dataset.idx);
-            state.records.splice(i, 1); persistRecords(); renderRecords();
+            const id = btn.dataset.id;
+            if (state.user && id) {
+                await fetch(`/api/records/${id}`, { method: 'DELETE' });
+                state.records.splice(i, 1);
+            } else {
+                state.records.splice(i, 1); persistLocalRecords();
+            }
+            renderRecords();
         });
     });
 }
@@ -753,8 +899,8 @@ function addFiles(files) {
     let total = state.fileBlobs.reduce((s, f) => s + f.size, 0);
     for (const f of files) {
         if (!f.type.startsWith('image/')) { showToast(t('toast_need_image')); continue; }
-        if (state.fileBlobs.length >= MAX_FILES) { showToast(`Max ${MAX_FILES} screenshots`); break; }
-        if (total + f.size > MAX_TOTAL) { showToast('Total size exceeds 40 MB'); break; }
+        if (state.fileBlobs.length >= MAX_FILES) break;
+        if (total + f.size > MAX_TOTAL) break;
         state.fileBlobs.push(f); total += f.size;
     }
     renderThumbs(); refreshAnalyzeBtn();
@@ -780,139 +926,6 @@ document.addEventListener('paste', (e) => {
     }
     if (imgs.length) { addFiles(imgs); showToast(t('toast_pasted'), 'success'); }
 });
-
-// ---------- Provider reference panel ----------
-const PROVIDER_ROWS = [
-    { domains: ['gmail.com', 'googlemail.com'], host: 'imap.gmail.com', port: 993, note: 'app_pass' },
-    { domains: ['outlook.com', 'hotmail.com', 'live.com'], host: '— blocked by Microsoft —', port: '—', note: 'outlook_dead' },
-    { domains: ['office365.com'], host: 'outlook.office365.com', port: 993, note: 'org_only' },
-    { domains: ['icloud.com', 'me.com'], host: 'imap.mail.me.com', port: 993, note: 'app_pass' },
-    { domains: ['yahoo.com'], host: 'imap.mail.yahoo.com', port: 993, note: 'app_pass' },
-    { domains: ['qq.com', 'foxmail.com'], host: 'imap.qq.com', port: 993, note: 'auth_code' },
-    { domains: ['163.com'], host: 'imap.163.com', port: 993, note: 'auth_code' },
-    { domains: ['126.com'], host: 'imap.126.com', port: 993, note: 'auth_code' },
-    { domains: ['sina.com'], host: 'imap.sina.com', port: 993, note: 'auth_code' },
-];
-const NOTE_COPY = {
-    en: {
-        app_pass:    { label: 'App password', tone: 'ok' },
-        auth_code:   { label: 'Authorization code', tone: 'ok' },
-        outlook_dead:{ label: 'IMAP disabled by Microsoft (Sept 2024). Use OAuth.', tone: 'bad' },
-        org_only:    { label: 'Org admin must enable IMAP', tone: 'warn' },
-    },
-    zh: {
-        app_pass:    { label: '需应用专用密码', tone: 'ok' },
-        auth_code:   { label: '需邮箱授权码', tone: 'ok' },
-        outlook_dead:{ label: '微软已停用 IMAP (2024.9),需 OAuth', tone: 'bad' },
-        org_only:    { label: '需组织管理员开启 IMAP', tone: 'warn' },
-    },
-};
-function renderProviderTable() {
-    const tbody = document.querySelector('#providerTable tbody');
-    if (!tbody) return;
-    const copy = NOTE_COPY[state.lang];
-    tbody.innerHTML = PROVIDER_ROWS.map(r => {
-        const c = copy[r.note] || { label: '', tone: 'ok' };
-        const toneCls = c.tone === 'bad' ? 'bg-pushpin-50 text-pushpin-700'
-                      : c.tone === 'warn' ? 'bg-roboflow-100 text-roboflow-700'
-                      : 'bg-roboflow-50 text-roboflow-600';
-        const rowCls = r.note === 'outlook_dead' ? 'opacity-70 line-through decoration-pushpin-450/40' : '';
-        return `
-        <tr class="border-t border-roboflow-100 ${rowCls}">
-            <td class="px-400 py-300 font-mono text-200">${r.domains.map(d => `@${d}`).join(' · ')}</td>
-            <td class="px-400 py-300 font-mono text-200">${r.host}</td>
-            <td class="px-400 py-300 font-mono text-roboflow-500">${r.port}</td>
-            <td class="px-400 py-300"><span class="text-100 font-semibold px-300 py-100 rounded-pill ${toneCls}">${c.label}</span></td>
-        </tr>`;
-    }).join('');
-}
-$('hostHelpBtn').addEventListener('click', () => {
-    const panel = $('hostHelpPanel');
-    const open = panel.classList.contains('hidden');
-    if (open) { renderProviderTable(); panel.classList.remove('hidden'); }
-    else panel.classList.add('hidden');
-});
-$('hostHelpClose').addEventListener('click', () => $('hostHelpPanel').classList.add('hidden'));
-
-// ---------- IMAP fetch ----------
-$('imapEmail').addEventListener('input', () => {
-    const v = $('imapEmail').value.trim().toLowerCase();
-    if (!v.includes('@') || $('imapHost').value) return;
-    const map = {
-        'gmail.com':'imap.gmail.com','googlemail.com':'imap.gmail.com',
-        'outlook.com':'outlook.office365.com','hotmail.com':'outlook.office365.com','live.com':'outlook.office365.com',
-        'icloud.com':'imap.mail.me.com','me.com':'imap.mail.me.com',
-        'yahoo.com':'imap.mail.yahoo.com',
-        'qq.com':'imap.qq.com','foxmail.com':'imap.qq.com',
-        '163.com':'imap.163.com','126.com':'imap.126.com','sina.com':'imap.sina.com',
-    };
-    const dom = v.split('@')[1] || ''; if (map[dom]) $('imapHost').placeholder = map[dom];
-});
-
-$('fetchBtn').addEventListener('click', async () => {
-    const email = $('imapEmail').value.trim();
-    const password = $('imapPass').value;
-    const host = $('imapHost').value.trim() || null;
-    const limit = Math.max(1, Math.min(20, Number($('imapLimit').value) || 5));
-    if (!email || !password) { showToast(t('toast_need_name')); return; }
-    $('loading').classList.remove('hidden');
-    $('loadingText').textContent = t('loading_fetch');
-    try {
-        const res = await fetch('/api/fetch-emails', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, host, limit }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Fetch failed');
-        state.fetched = data.emails || [];
-        renderFetched();
-        if (!state.fetched.length) showToast(t('toast_no_emails'));
-    } catch (e) {
-        showToast(String(e.message || e));
-    } finally {
-        $('loading').classList.add('hidden');
-    }
-});
-
-function renderFetched() {
-    const box = $('fetchResults');
-    if (!state.fetched.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-    box.classList.remove('hidden');
-    box.innerHTML = `
-        <div class="text-100 font-semibold text-roboflow-600 tracking-widest uppercase mb-300">${state.fetched.length} unread</div>
-        <div class="grid gap-300">` + state.fetched.map((m, i) => `
-            <button data-idx="${i}" class="fetched-item text-left bg-roboflow-50 hover:bg-pushpin-0 rounded-400 p-400 transition-all duration-500 ease-apple">
-                <div class="flex items-center justify-between gap-300 mb-200">
-                    <div class="text-200 font-semibold text-cosmicore truncate">${escapeHtml(m.subject || '(no subject)')}</div>
-                    <div class="text-100 text-roboflow-400 font-mono whitespace-nowrap">${escapeHtml(m.date || '')}</div>
-                </div>
-                <div class="text-100 text-roboflow-500 truncate">${escapeHtml(m.from_name || m.from_addr || '')} · ${escapeHtml((m.body || '').slice(0, 120))}</div>
-            </button>`).join('') + `</div>`;
-    box.querySelectorAll('.fetched-item').forEach(btn => {
-        btn.addEventListener('click', () => analyzeFetched(Number(btn.dataset.idx)));
-    });
-}
-
-async function analyzeFetched(idx) {
-    const m = state.fetched[idx]; if (!m) return;
-    $('loading').classList.remove('hidden');
-    $('loadingText').textContent = t('loading_analyze');
-    const fd = new FormData();
-    const composed = `Subject: ${m.subject}\nFrom: ${m.from_name} <${m.from_addr}>\nDate: ${m.date}\n\n${m.body}`;
-    fd.append('text', composed);
-    fd.append('lang', state.lang);
-    try {
-        const res = await fetch('/api/analyze', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (!res.ok || !data.success) throw new Error(data.detail || 'Analyze failed');
-        applyAnalysis(data, m.from_name || m.from_addr || '', '');
-    } catch (e) {
-        showToast(String(e.message || e));
-    } finally {
-        $('loading').classList.add('hidden');
-    }
-}
 
 // ---------- Analyze (upload + text) ----------
 $('analyzeBtn').addEventListener('click', async () => {
@@ -957,7 +970,7 @@ function setStep(n) {
 }
 
 // ---------- Save ----------
-$('saveBtn').addEventListener('click', () => {
+$('saveBtn').addEventListener('click', async () => {
     const name = $('customerName').value.trim();
     if (!name) { showToast(t('toast_need_name')); $('customerName').focus(); return; }
     const rec = {
@@ -969,8 +982,25 @@ $('saveBtn').addEventListener('click', () => {
         status: $('status').value,
         created_at: new Date().toISOString().slice(0, 19).replace('T', ' '),
     };
-    state.records.unshift(rec);
-    persistRecords();
+    if (state.user) {
+        $('loading').classList.remove('hidden');
+        $('loadingText').textContent = t('loading_saving');
+        try {
+            const r = await fetch('/api/records', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(rec),
+            });
+            const data = await r.json();
+            if (!r.ok) throw new Error(data.detail || 'Save failed');
+            state.records.unshift(data.record);
+        } catch (e) {
+            showToast(String(e.message || e)); $('loading').classList.add('hidden'); return;
+        }
+        $('loading').classList.add('hidden');
+    } else {
+        state.records.unshift(rec); persistLocalRecords();
+    }
     $('step2').classList.add('hidden');
     $('step3').classList.remove('hidden');
     setStep(3);
@@ -1001,7 +1031,9 @@ $('goListBtn').addEventListener('click', () => { reset(); showList(); });
 // ---------- Boot ----------
 applyI18n();
 setSource('upload');
+readQueryFlash();
 checkHealth();
+loadMe();
 </script>
 
 </body>
