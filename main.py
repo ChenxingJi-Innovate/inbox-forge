@@ -1,37 +1,38 @@
 """
-Inbox Forge - bilingual AI email summarizer with Google + Microsoft OAuth.
+Inbox Forge - local-first AI email summarizer with rolling per-contact dossiers.
 
 Architecture:
-- Identity: "Sign in with Google" or "Sign in with Microsoft" creates a user
-  and an oauth_connection in one step. The same OAuth grant carries the inbox
-  read scope (gmail.readonly / Mail.Read), so connect-once = sign in + inbox.
-- Storage: Postgres holds users, sessions, oauth_connections, records.
-  Provider refresh tokens are encrypted with TOKEN_ENC_KEY.
-- Stateless analyze + Excel build remain available without sign-in.
+- All persistence is local SQLite at ~/.inbox-forge/data.db (override via DB_PATH).
+- No user account / sign-in concept. The OAuth grant (Google or Microsoft) is
+  itself the identity proof; the install is single-owner.
+- Multiple inboxes per install (gmail + outlook) share the same contacts table,
+  so the same person across both mailboxes shows up as one contact.
+- Each contact has a rolling dossier (contact_dossier) that gets updated every
+  time a new email from them is processed: the prior dossier and recent email
+  summaries are fed back into Gemini as context.
 """
 import os
-import time
+import secrets
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import (
-    Cookie, Depends, FastAPI, File, Form, HTTPException, Query,
+    FastAPI, File, Form, HTTPException, Query,
     Request, Response, UploadFile,
 )
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel
 
-import auth
 import db
 import inbox_gmail
 import inbox_outlook
 import oauth_providers as oauth
 from crypto_util import decrypt, encrypt
-from excel_service import build_workbook
-from gemini_service import analyze_email
+from gemini_service import analyze_email, analyze_with_context
 
 load_dotenv()
 
@@ -40,29 +41,31 @@ app = FastAPI(title="Inbox Forge")
 BASE_DIR = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 
-# In-process state cache for OAuth CSRF tokens. Stateless instances will lose
-# these on restart — for the demo this is acceptable since the lifetime is
-# under a minute. Could move to a Redis/KV later if multi-instance is needed.
-_oauth_states: dict[str, float] = {}
-_OAUTH_STATE_TTL = 600  # 10 min
+# OAuth CSRF: the state value is itself a signed, time-limited token. No
+# server-side cache, so it survives Vercel's serverless multi-instance model.
+# Falls back to a dev key locally if TOKEN_ENC_KEY is missing; production
+# deploys MUST set TOKEN_ENC_KEY.
+_OAUTH_STATE_TTL = 600
+_state_signer = URLSafeTimedSerializer(
+    os.getenv("TOKEN_ENC_KEY") or "dev-fallback-key-please-set-TOKEN_ENC_KEY",
+    salt="oauth-state",
+)
 
 
 def _norm_lang(lang: Optional[str]) -> str:
     return "zh" if str(lang or "").lower() == "zh" else "en"
 
 
-def _put_state(state: str) -> None:
-    _oauth_states[state] = time.time() + _OAUTH_STATE_TTL
-    # opportunistic GC
-    now = time.time()
-    expired = [k for k, t in _oauth_states.items() if t < now]
-    for k in expired:
-        _oauth_states.pop(k, None)
+def _make_state() -> str:
+    return _state_signer.dumps(secrets.token_urlsafe(16))
 
 
 def _consume_state(state: str) -> bool:
-    deadline = _oauth_states.pop(state, 0)
-    return deadline > time.time()
+    try:
+        _state_signer.loads(state, max_age=_OAUTH_STATE_TTL)
+        return True
+    except (BadSignature, SignatureExpired):
+        return False
 
 
 # ---------- Pages ----------
@@ -78,48 +81,38 @@ async def health():
         "gemini_key_set": bool(os.getenv("GEMINI_API_KEY")),
         "google_oauth_set": bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET")),
         "microsoft_oauth_set": bool(os.getenv("MICROSOFT_CLIENT_ID") and os.getenv("MICROSOFT_CLIENT_SECRET")),
-        "db_set": bool(os.getenv("DATABASE_URL")),
+        "token_enc_key_set": bool(os.getenv("TOKEN_ENC_KEY")),
+        "db_path": str(Path.home() / ".inbox-forge" / "data.db") if not os.getenv("DB_PATH") else os.getenv("DB_PATH"),
     }
 
-
-# ---------- Auth: identity + me ----------
 
 @app.get("/api/me")
-async def me(request: Request):
-    user = auth.current_user_optional(request)
-    if not user:
-        return {"user": None, "connections": []}
-    conns = db.list_oauth_connections(user["id"])
+async def me():
+    """No user account; just report which inboxes are connected and basic counts."""
+    conns = db.list_oauth_connections()
+    contacts = db.list_contacts()
     return {
-        "user": {"id": user["id"], "email": user["email"], "name": user.get("name"), "avatar_url": user.get("avatar_url")},
         "connections": [
-            {
-                "id": c["id"],
-                "provider": c["provider"],
-                "provider_email": c["provider_email"],
-            } for c in conns
+            {"id": c["id"], "provider": c["provider"], "provider_email": c["provider_email"]}
+            for c in conns
         ],
+        "stats": {
+            "contacts": len(contacts),
+            "connections": len(conns),
+        },
     }
-
-
-@app.post("/api/logout")
-async def logout(request: Request, response: Response):
-    token = request.cookies.get(auth.SESSION_COOKIE)
-    auth.clear_session(response, token)
-    return {"success": True}
 
 
 # ---------- OAuth: Google ----------
 
 @app.get("/api/auth/google/start")
 async def google_start():
-    state = oauth.make_state()
-    _put_state(state)
+    state = _make_state()
     return RedirectResponse(oauth.google_auth_url(state), status_code=302)
 
 
 @app.get("/api/auth/google/callback")
-async def google_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+async def google_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     if error:
         return RedirectResponse(f"/?oauth_error={error}", status_code=302)
     if not code or not state or not _consume_state(state):
@@ -131,12 +124,10 @@ async def google_callback(request: Request, code: Optional[str] = None, state: O
         return RedirectResponse(f"/?oauth_error={type(e).__name__}", status_code=302)
 
     email = (info.get("email") or "").lower()
-    name = info.get("name")
-    avatar = info.get("picture")
-    user = db.upsert_user(email=email, name=name, avatar_url=avatar)
+    if not email:
+        return RedirectResponse("/?oauth_error=no_email", status_code=302)
 
     db.upsert_oauth_connection(
-        user_id=user["id"],
         provider="google",
         provider_email=email,
         access_token_enc=encrypt(tokens["access_token"]),
@@ -144,23 +135,19 @@ async def google_callback(request: Request, code: Optional[str] = None, state: O
         expires_at=oauth.expires_at_from_seconds(tokens.get("expires_in")),
         scope=tokens.get("scope"),
     )
-
-    response = RedirectResponse("/?signed_in=google", status_code=302)
-    auth.issue_session(response, user["id"])
-    return response
+    return RedirectResponse("/?connected=google", status_code=302)
 
 
 # ---------- OAuth: Microsoft ----------
 
 @app.get("/api/auth/microsoft/start")
 async def microsoft_start():
-    state = oauth.make_state()
-    _put_state(state)
+    state = _make_state()
     return RedirectResponse(oauth.microsoft_auth_url(state), status_code=302)
 
 
 @app.get("/api/auth/microsoft/callback")
-async def microsoft_callback(request: Request, code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+async def microsoft_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     if error:
         return RedirectResponse(f"/?oauth_error={error}", status_code=302)
     if not code or not state or not _consume_state(state):
@@ -172,13 +159,10 @@ async def microsoft_callback(request: Request, code: Optional[str] = None, state
         return RedirectResponse(f"/?oauth_error={type(e).__name__}", status_code=302)
 
     email = (info.get("mail") or info.get("userPrincipalName") or "").lower()
-    name = info.get("displayName")
     if not email:
         return RedirectResponse("/?oauth_error=no_email", status_code=302)
 
-    user = db.upsert_user(email=email, name=name, avatar_url=None)
     db.upsert_oauth_connection(
-        user_id=user["id"],
         provider="microsoft",
         provider_email=email,
         access_token_enc=encrypt(tokens["access_token"]),
@@ -186,27 +170,33 @@ async def microsoft_callback(request: Request, code: Optional[str] = None, state
         expires_at=oauth.expires_at_from_seconds(tokens.get("expires_in")),
         scope=tokens.get("scope"),
     )
-
-    response = RedirectResponse("/?signed_in=microsoft", status_code=302)
-    auth.issue_session(response, user["id"])
-    return response
+    return RedirectResponse("/?connected=microsoft", status_code=302)
 
 
-# ---------- Inbox fetch (uses stored OAuth tokens) ----------
+# ---------- Inbox: tokens + fetch ----------
 
-def _live_access_token(user_id: int, conn_id: int, provider: str) -> str:
+def _live_access_token(conn_id: int, provider: str) -> str:
     """Return a fresh access token, refreshing via the stored refresh token if needed."""
-    conn = db.get_oauth_connection(user_id, conn_id)
+    conn = db.get_oauth_connection(conn_id)
     if not conn or conn["provider"] != provider:
         raise HTTPException(status_code=404, detail="Connection not found")
 
     access = decrypt(conn["access_token_enc"])
-    expires_at = conn["expires_at"]
+    expires_at_iso = conn.get("expires_at")
+    expires_at = None
+    if expires_at_iso:
+        try:
+            expires_at = datetime.fromisoformat(expires_at_iso)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+        except ValueError:
+            expires_at = None
+
     needs_refresh = expires_at and expires_at <= datetime.now(timezone.utc)
     if not needs_refresh:
         return access
 
-    refresh = decrypt(conn["refresh_token_enc"]) if conn["refresh_token_enc"] else None
+    refresh = decrypt(conn["refresh_token_enc"]) if conn.get("refresh_token_enc") else None
     if not refresh:
         raise HTTPException(status_code=400, detail="Token expired and no refresh token; please re-connect")
     try:
@@ -222,19 +212,23 @@ def _live_access_token(user_id: int, conn_id: int, provider: str) -> str:
     return new_access
 
 
+def _fetch_unread(conn: dict, access: str, limit: int) -> list[dict]:
+    if conn["provider"] == "google":
+        return inbox_gmail.fetch_unread(access, limit=limit)
+    if conn["provider"] == "microsoft":
+        return inbox_outlook.fetch_unread(access, limit=limit)
+    raise HTTPException(status_code=400, detail=f"Unsupported provider: {conn['provider']}")
+
+
 @app.get("/api/inbox/{conn_id}/unread")
-async def inbox_unread(conn_id: int, limit: int = 5, user: dict = Depends(auth.require_user)):
-    conn = db.get_oauth_connection(user["id"], conn_id)
+async def inbox_unread(conn_id: int, limit: int = 5):
+    """Raw inspection endpoint: returns unread emails WITHOUT analyzing or storing them."""
+    conn = db.get_oauth_connection(conn_id)
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
-    access = _live_access_token(user["id"], conn_id, conn["provider"])
+    access = _live_access_token(conn_id, conn["provider"])
     try:
-        if conn["provider"] == "google":
-            emails = inbox_gmail.fetch_unread(access, limit=limit)
-        elif conn["provider"] == "microsoft":
-            emails = inbox_outlook.fetch_unread(access, limit=limit)
-        else:
-            raise HTTPException(status_code=400, detail=f"Unsupported provider: {conn['provider']}")
+        emails = _fetch_unread(conn, access, limit)
     except HTTPException:
         raise
     except Exception as e:
@@ -243,12 +237,114 @@ async def inbox_unread(conn_id: int, limit: int = 5, user: dict = Depends(auth.r
 
 
 @app.delete("/api/inbox/{conn_id}")
-async def inbox_disconnect(conn_id: int, user: dict = Depends(auth.require_user)):
-    db.delete_oauth_connection(user["id"], conn_id)
+async def inbox_disconnect(conn_id: int):
+    db.delete_oauth_connection(conn_id)
     return {"success": True}
 
 
-# ---------- Analyze (no sign-in required) ----------
+# ---------- Inbox sweep: the auto-pipeline ----------
+
+class SweepBody(BaseModel):
+    limit: int = 10
+    lang: str = "zh"
+
+
+@app.post("/api/inbox/{conn_id}/sweep")
+async def inbox_sweep(conn_id: int, body: SweepBody = SweepBody()):
+    """Pull unread → dedupe → analyze with contact context → store + update dossier.
+
+    This is the core auto-pipeline. Idempotent: rerunning is safe because
+    we skip any provider message_id we've already processed.
+    """
+    conn = db.get_oauth_connection(conn_id)
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found")
+
+    lang = _norm_lang(body.lang)
+    access = _live_access_token(conn_id, conn["provider"])
+    try:
+        raw_emails = _fetch_unread(conn, access, body.limit)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fetch failed: {e}")
+
+    processed: list[dict] = []
+    skipped_duplicate = 0
+    failed: list[dict] = []
+    provider = conn["provider"]
+
+    for e in raw_emails:
+        msg_id = e.get("id")
+        if not msg_id:
+            continue
+
+        if db.is_message_processed(provider, msg_id):
+            skipped_duplicate += 1
+            continue
+
+        from_addr = (e.get("from_addr") or "").lower().strip()
+        if not from_addr:
+            continue
+
+        contact = db.upsert_contact(email=from_addr, name=(e.get("from_name") or None))
+        prior_dossier = db.get_dossier(contact["id"])
+        history = db.get_recent_summaries(contact["id"], n=5)
+
+        try:
+            result = analyze_with_context(
+                body=e.get("body", "") or "",
+                subject=e.get("subject", "") or "",
+                dossier=prior_dossier,
+                history=history,
+                lang=lang,
+            )
+        except Exception as exc:
+            failed.append({"id": msg_id, "from": from_addr, "error": str(exc)})
+            continue
+
+        stored = db.add_contact_email(
+            contact_id=contact["id"],
+            provider=provider,
+            message_id=msg_id,
+            connection_id=conn_id,
+            received_at=e.get("date") or None,
+            subject=e.get("subject", "") or "",
+            summary=result.get("summary", "") or "",
+            action_items=result.get("action_items", "") or "",
+            raw_snippet=(e.get("body", "") or "")[:2000],
+        )
+        if not stored:
+            skipped_duplicate += 1
+            continue
+
+        ud = result.get("updated_dossier") or {}
+        db.upsert_dossier(
+            contact_id=contact["id"],
+            rolling_summary=ud.get("rolling_summary", "") or (prior_dossier or {}).get("rolling_summary", "") or "",
+            open_action_items=ud.get("open_action_items", "") or "",
+            current_topic=ud.get("current_topic", "") or "",
+            relationship_stage=ud.get("relationship_stage", "") or "",
+        )
+
+        processed.append({
+            "contact_id": contact["id"],
+            "contact_email": from_addr,
+            "subject": e.get("subject", "") or "",
+            "summary": result.get("summary", "") or "",
+        })
+
+    return {
+        "success": True,
+        "fetched": len(raw_emails),
+        "processed": len(processed),
+        "skipped_duplicate": skipped_duplicate,
+        "failed": failed,
+        "items": processed,
+    }
+
+
+# ---------- Stateless analyze (manual upload, no storage) ----------
 
 MAX_TOTAL_BYTES = 40 * 1024 * 1024
 MAX_FILES = 8
@@ -260,6 +356,8 @@ async def analyze(
     text: str = Form(""),
     lang: str = Form("en"),
 ):
+    """Kept for the manual screenshot / paste flow on the landing page.
+    Does not touch the contacts database."""
     lang = _norm_lang(lang)
     text = (text or "").strip()
     images_bytes: list[bytes] = []
@@ -298,75 +396,32 @@ async def analyze(
     }
 
 
-# ---------- Records ----------
+# ---------- Contacts ----------
 
-class RecordIn(BaseModel):
-    customer_name: str
-    company: str = ""
-    date: str = ""
-    summary: str = ""
-    action_items: str = ""
-    status: str = ""
+@app.get("/api/contacts")
+async def get_contacts():
+    return {"contacts": db.list_contacts()}
 
 
-@app.get("/api/records")
-async def get_records(request: Request):
-    user = auth.current_user_optional(request)
-    if not user:
-        return {"success": True, "records": [], "anonymous": True}
-    rows = db.list_records(user["id"])
-    return {
-        "success": True,
-        "records": [
-            {
-                **r,
-                "created_at": r["created_at"].isoformat() if r.get("created_at") else "",
-            } for r in rows
-        ],
-    }
+@app.get("/api/contacts/{contact_id}")
+async def get_contact_detail(contact_id: int, limit: int = Query(50, ge=1, le=200)):
+    contact = db.get_contact(contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact not found")
+    emails = db.list_contact_emails(contact_id, limit=limit)
+    return {"contact": contact, "emails": emails}
 
 
-@app.post("/api/records")
-async def post_record(record: RecordIn, user: dict = Depends(auth.require_user)):
-    if not record.customer_name.strip():
-        raise HTTPException(status_code=400, detail="Customer name is required")
-    row = db.add_record(user["id"], record.model_dump())
-    row["created_at"] = row["created_at"].isoformat() if row.get("created_at") else ""
-    return {"success": True, "record": row}
-
-
-@app.delete("/api/records/{record_id}")
-async def delete_record(record_id: int, user: dict = Depends(auth.require_user)):
-    db.delete_record(user["id"], record_id)
+@app.delete("/api/contacts/{contact_id}")
+async def remove_contact(contact_id: int):
+    db.delete_contact(contact_id)
     return {"success": True}
 
 
-@app.delete("/api/records")
-async def clear_records(user: dict = Depends(auth.require_user)):
-    db.clear_records(user["id"])
+@app.delete("/api/contact-emails/{email_id}")
+async def remove_contact_email(email_id: int):
+    db.delete_contact_email(email_id)
     return {"success": True}
-
-
-# ---------- Excel ----------
-
-class ExcelBody(BaseModel):
-    records: list[dict]
-    lang: str = "en"
-
-
-@app.post("/api/excel")
-async def excel_endpoint(body: ExcelBody):
-    lang = _norm_lang(body.lang)
-    try:
-        data = build_workbook(body.records or [], lang=lang)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Excel build failed: {e}")
-    filename = "email_records_zh.xlsx" if lang == "zh" else "email_records_en.xlsx"
-    return Response(
-        content=data,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 # ---------- Errors ----------
@@ -392,9 +447,10 @@ if __name__ == "__main__":
 
     print()
     print("=" * 50)
-    print(" Inbox Forge running!")
+    print(" Inbox Forge running (local mode)")
     print(f"   Local:    http://127.0.0.1:8000")
     print(f"   Network:  http://{local_ip}:8000")
+    print(f"   Data:     {Path(os.getenv('DB_PATH') or (Path.home() / '.inbox-forge' / 'data.db'))}")
     print("=" * 50)
     print()
 

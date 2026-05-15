@@ -1,153 +1,202 @@
-"""Postgres connection + schema.
+"""Storage layer: Turso (remote libSQL) on Vercel, local SQLite for self-hosters.
 
-DATABASE_URL must be a Postgres URL (Neon / Supabase / Vercel Postgres / Render
-Postgres all work). The schema is created on first import.
+Mode selection is automatic:
+- If TURSO_DATABASE_URL is set        -> use libsql-client over HTTPS (serverless-safe)
+- Otherwise                            -> open ~/.inbox-forge/data.db via stdlib sqlite3
+                                          (override the path with DB_PATH)
+
+Both engines speak the same SQL dialect (libSQL is SQLite-compatible), so the
+helper functions below use one set of SQL strings for both. A tiny adapter
+class exposes the subset of the sqlite3.Cursor API we actually use, so the
+existing call sites do not need to know which backend is live.
 """
 import os
+import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
-
-import psycopg
-from psycopg.rows import dict_row
 
 
 SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS users (
-    id BIGSERIAL PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    name TEXT,
-    avatar_url TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS sessions (
-    token TEXT PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    expires_at TIMESTAMPTZ NOT NULL
-);
-CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
-
 CREATE TABLE IF NOT EXISTS oauth_connections (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     provider TEXT NOT NULL,
     provider_email TEXT NOT NULL,
     access_token_enc TEXT NOT NULL,
     refresh_token_enc TEXT,
-    expires_at TIMESTAMPTZ,
+    expires_at TEXT,
     scope TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (user_id, provider, provider_email)
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (provider, provider_email)
 );
-CREATE INDEX IF NOT EXISTS oauth_user_idx ON oauth_connections(user_id);
 
-CREATE TABLE IF NOT EXISTS records (
-    id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    customer_name TEXT NOT NULL,
+CREATE INDEX IF NOT EXISTS oauth_conn_provider_email ON oauth_connections(provider, provider_email);
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    email TEXT NOT NULL UNIQUE,
+    name TEXT,
     company TEXT,
-    date TEXT,
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    total_emails INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS contacts_last_seen ON contacts(last_seen_at DESC);
+
+CREATE TABLE IF NOT EXISTS contact_emails (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    connection_id INTEGER REFERENCES oauth_connections(id) ON DELETE SET NULL,
+    provider TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    received_at TEXT,
+    subject TEXT,
     summary TEXT,
     action_items TEXT,
-    status TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    raw_snippet TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (provider, message_id)
 );
-CREATE INDEX IF NOT EXISTS records_user_idx ON records(user_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS contact_emails_contact ON contact_emails(contact_id, received_at DESC);
+
+CREATE TABLE IF NOT EXISTS contact_dossier (
+    contact_id INTEGER PRIMARY KEY REFERENCES contacts(id) ON DELETE CASCADE,
+    rolling_summary TEXT,
+    open_action_items TEXT,
+    current_topic TEXT,
+    relationship_stage TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 """
 
 
-def _conn_string() -> str:
-    url = os.getenv("DATABASE_URL", "")
-    if not url:
-        raise RuntimeError("DATABASE_URL not set")
-    # Neon / some providers add ?sslmode=require, psycopg accepts it.
-    return url
+_USE_TURSO = bool(os.getenv("TURSO_DATABASE_URL"))
 
+
+def _local_path() -> Path:
+    custom = os.getenv("DB_PATH")
+    if custom:
+        p = Path(custom).expanduser()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    base = Path.home() / ".inbox-forge"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "data.db"
+
+
+# ─── Turso path ──────────────────────────────────────────────────────────
+# Lazy imports so local-only users don't need libsql-client installed.
+
+_turso_client = None
+
+
+def _turso():
+    global _turso_client
+    if _turso_client is None:
+        import libsql_client  # type: ignore
+        _turso_client = libsql_client.create_client_sync(
+            url=os.environ["TURSO_DATABASE_URL"],
+            auth_token=os.environ.get("TURSO_AUTH_TOKEN"),
+        )
+    return _turso_client
+
+
+class _TursoCursor:
+    """Thin sqlite3.Cursor lookalike backed by libsql_client.
+
+    Implements only the surface we use: execute(sql, params), fetchone(),
+    fetchall(), and the lastrowid attribute. Rows are returned as dicts to
+    match `conn.row_factory = sqlite3.Row` behavior on the local side.
+    """
+
+    def __init__(self):
+        self._rs = None
+        self.lastrowid = None
+
+    def execute(self, sql: str, params=()):  # noqa: ANN001
+        rs = _turso().execute(sql, list(params) if params else [])
+        self._rs = rs
+        # libsql_client exposes last_insert_rowid on the ResultSet
+        self.lastrowid = getattr(rs, "last_insert_rowid", None)
+        return self
+
+    @staticmethod
+    def _row_to_dict(row, columns):
+        return {col: row[i] for i, col in enumerate(columns)}
+
+    def fetchone(self):
+        rs = self._rs
+        if rs is None or not getattr(rs, "rows", None):
+            return None
+        return self._row_to_dict(rs.rows[0], list(rs.columns))
+
+    def fetchall(self):
+        rs = self._rs
+        if rs is None or not getattr(rs, "rows", None):
+            return []
+        cols = list(rs.columns)
+        return [self._row_to_dict(r, cols) for r in rs.rows]
+
+
+# ─── init + cursor context ───────────────────────────────────────────────
 
 _initialized = False
 
 
-def init_db():
+def _split_schema(sql: str) -> list[str]:
+    return [s.strip() for s in sql.split(";") if s.strip()]
+
+
+def init_db() -> None:
     global _initialized
     if _initialized:
         return
-    with psycopg.connect(_conn_string(), autocommit=True) as conn:
-        with conn.cursor() as cur:
-            cur.execute(SCHEMA_SQL)
+    if _USE_TURSO:
+        for stmt in _split_schema(SCHEMA_SQL):
+            _turso().execute(stmt)
+    else:
+        with sqlite3.connect(_local_path()) as conn:
+            conn.executescript(SCHEMA_SQL)
+            conn.commit()
     _initialized = True
 
 
 @contextmanager
 def cursor():
-    """Yield a dict-row cursor in a fresh autocommit connection.
-
-    Simple per-call connection: fine for serverless-style traffic and avoids
-    pool lifecycle headaches. For higher load, swap in psycopg_pool later.
-    """
     init_db()
-    with psycopg.connect(_conn_string(), autocommit=True, row_factory=dict_row) as conn:
-        with conn.cursor() as cur:
-            yield cur
+    if _USE_TURSO:
+        yield _TursoCursor()
+        return
+    conn = sqlite3.connect(_local_path())
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        cur = conn.cursor()
+        yield cur
+        conn.commit()
+    finally:
+        conn.close()
 
 
-# ---------- users ----------
-
-def upsert_user(email: str, name: Optional[str] = None, avatar_url: Optional[str] = None) -> dict:
-    with cursor() as cur:
-        cur.execute(
-            """INSERT INTO users (email, name, avatar_url) VALUES (%s, %s, %s)
-               ON CONFLICT (email) DO UPDATE SET
-                   name = COALESCE(EXCLUDED.name, users.name),
-                   avatar_url = COALESCE(EXCLUDED.avatar_url, users.avatar_url)
-               RETURNING id, email, name, avatar_url""",
-            (email.lower().strip(), name, avatar_url),
-        )
-        return cur.fetchone()
+def _row(r) -> Optional[dict]:
+    if r is None:
+        return None
+    if isinstance(r, dict):
+        return r
+    return dict(r)
 
 
-def get_user(user_id: int) -> Optional[dict]:
-    with cursor() as cur:
-        cur.execute("SELECT id, email, name, avatar_url FROM users WHERE id = %s", (user_id,))
-        return cur.fetchone()
+def _iso(d: Optional[datetime]) -> Optional[str]:
+    return d.isoformat() if d else None
 
 
-# ---------- sessions ----------
-
-SESSION_TTL_DAYS = 30
-
-
-def create_session(user_id: int, token: str) -> None:
-    expires = datetime.now(timezone.utc) + timedelta(days=SESSION_TTL_DAYS)
-    with cursor() as cur:
-        cur.execute(
-            "INSERT INTO sessions (token, user_id, expires_at) VALUES (%s, %s, %s)",
-            (token, user_id, expires),
-        )
-
-
-def get_user_by_session(token: str) -> Optional[dict]:
-    with cursor() as cur:
-        cur.execute(
-            """SELECT u.id, u.email, u.name, u.avatar_url
-               FROM sessions s JOIN users u ON s.user_id = u.id
-               WHERE s.token = %s AND s.expires_at > NOW()""",
-            (token,),
-        )
-        return cur.fetchone()
-
-
-def delete_session(token: str) -> None:
-    with cursor() as cur:
-        cur.execute("DELETE FROM sessions WHERE token = %s", (token,))
-
-
-# ---------- oauth connections ----------
+# ─── oauth connections ───────────────────────────────────────────────────
 
 def upsert_oauth_connection(
-    user_id: int,
     provider: str,
     provider_email: str,
     access_token_enc: str,
@@ -155,102 +204,229 @@ def upsert_oauth_connection(
     expires_at: Optional[datetime],
     scope: Optional[str],
 ) -> dict:
+    pe = provider_email.lower().strip()
     with cursor() as cur:
         cur.execute(
             """INSERT INTO oauth_connections
-                  (user_id, provider, provider_email, access_token_enc,
-                   refresh_token_enc, expires_at, scope)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
-               ON CONFLICT (user_id, provider, provider_email) DO UPDATE SET
-                   access_token_enc = EXCLUDED.access_token_enc,
-                   refresh_token_enc = COALESCE(EXCLUDED.refresh_token_enc, oauth_connections.refresh_token_enc),
-                   expires_at = EXCLUDED.expires_at,
-                   scope = EXCLUDED.scope,
-                   updated_at = NOW()
-               RETURNING *""",
-            (user_id, provider, provider_email.lower(), access_token_enc,
-             refresh_token_enc, expires_at, scope),
+                  (provider, provider_email, access_token_enc, refresh_token_enc, expires_at, scope, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(provider, provider_email) DO UPDATE SET
+                   access_token_enc = excluded.access_token_enc,
+                   refresh_token_enc = COALESCE(excluded.refresh_token_enc, oauth_connections.refresh_token_enc),
+                   expires_at = excluded.expires_at,
+                   scope = excluded.scope,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (provider, pe, access_token_enc, refresh_token_enc, _iso(expires_at), scope),
         )
-        return cur.fetchone()
+        cur.execute(
+            "SELECT * FROM oauth_connections WHERE provider = ? AND provider_email = ?",
+            (provider, pe),
+        )
+        return _row(cur.fetchone())
 
 
-def list_oauth_connections(user_id: int) -> list[dict]:
+def list_oauth_connections() -> list[dict]:
     with cursor() as cur:
         cur.execute(
             """SELECT id, provider, provider_email, expires_at, scope, created_at
-               FROM oauth_connections WHERE user_id = %s ORDER BY created_at DESC""",
-            (user_id,),
+               FROM oauth_connections ORDER BY created_at DESC"""
         )
-        return cur.fetchall()
+        return [_row(r) for r in cur.fetchall()]
 
 
-def get_oauth_connection(user_id: int, conn_id: int) -> Optional[dict]:
+def get_oauth_connection(conn_id: int) -> Optional[dict]:
     with cursor() as cur:
-        cur.execute(
-            "SELECT * FROM oauth_connections WHERE id = %s AND user_id = %s",
-            (conn_id, user_id),
-        )
-        return cur.fetchone()
+        cur.execute("SELECT * FROM oauth_connections WHERE id = ?", (conn_id,))
+        return _row(cur.fetchone())
 
 
-def update_oauth_tokens(
-    conn_id: int,
-    access_token_enc: str,
-    expires_at: Optional[datetime],
-) -> None:
+def update_oauth_tokens(conn_id: int, access_token_enc: str, expires_at: Optional[datetime]) -> None:
     with cursor() as cur:
         cur.execute(
             """UPDATE oauth_connections
-               SET access_token_enc = %s, expires_at = %s, updated_at = NOW()
-               WHERE id = %s""",
-            (access_token_enc, expires_at, conn_id),
+               SET access_token_enc = ?, expires_at = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (access_token_enc, _iso(expires_at), conn_id),
         )
 
 
-def delete_oauth_connection(user_id: int, conn_id: int) -> None:
+def delete_oauth_connection(conn_id: int) -> None:
+    with cursor() as cur:
+        cur.execute("DELETE FROM oauth_connections WHERE id = ?", (conn_id,))
+
+
+# ─── contacts ────────────────────────────────────────────────────────────
+
+def upsert_contact(email: str, name: Optional[str] = None, company: Optional[str] = None) -> dict:
+    e = email.lower().strip()
     with cursor() as cur:
         cur.execute(
-            "DELETE FROM oauth_connections WHERE id = %s AND user_id = %s",
-            (conn_id, user_id),
+            """INSERT INTO contacts (email, name, company)
+               VALUES (?, ?, ?)
+               ON CONFLICT(email) DO UPDATE SET
+                   name = COALESCE(NULLIF(excluded.name, ''), contacts.name),
+                   company = COALESCE(NULLIF(excluded.company, ''), contacts.company),
+                   last_seen_at = CURRENT_TIMESTAMP""",
+            (e, name or None, company or None),
         )
+        cur.execute("SELECT * FROM contacts WHERE email = ?", (e,))
+        return _row(cur.fetchone())
 
 
-# ---------- records ----------
-
-def add_record(user_id: int, r: dict) -> dict:
+def list_contacts() -> list[dict]:
     with cursor() as cur:
         cur.execute(
-            """INSERT INTO records (user_id, customer_name, company, date,
-                                    summary, action_items, status)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
-               RETURNING id, customer_name, company, date, summary, action_items,
-                         status, created_at""",
-            (user_id, r.get("customer_name", ""), r.get("company", ""),
-             r.get("date", ""), r.get("summary", ""), r.get("action_items", ""),
-             r.get("status", "")),
+            """SELECT c.id, c.email, c.name, c.company, c.first_seen_at,
+                      c.last_seen_at, c.total_emails,
+                      d.rolling_summary, d.current_topic, d.relationship_stage,
+                      d.updated_at AS dossier_updated_at
+               FROM contacts c
+               LEFT JOIN contact_dossier d ON d.contact_id = c.id
+               ORDER BY c.last_seen_at DESC"""
         )
-        return cur.fetchone()
+        return [_row(r) for r in cur.fetchall()]
 
 
-def list_records(user_id: int) -> list[dict]:
+def get_contact(contact_id: int) -> Optional[dict]:
     with cursor() as cur:
         cur.execute(
-            """SELECT id, customer_name, company, date, summary, action_items,
-                      status, created_at
-               FROM records WHERE user_id = %s ORDER BY created_at DESC""",
-            (user_id,),
+            """SELECT c.*, d.rolling_summary, d.open_action_items, d.current_topic,
+                      d.relationship_stage, d.updated_at AS dossier_updated_at
+               FROM contacts c
+               LEFT JOIN contact_dossier d ON d.contact_id = c.id
+               WHERE c.id = ?""",
+            (contact_id,),
         )
-        return cur.fetchall()
+        return _row(cur.fetchone())
 
 
-def delete_record(user_id: int, record_id: int) -> None:
+def delete_contact(contact_id: int) -> None:
+    with cursor() as cur:
+        cur.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
+
+
+# ─── contact_emails ──────────────────────────────────────────────────────
+
+def is_message_processed(provider: str, message_id: str) -> bool:
     with cursor() as cur:
         cur.execute(
-            "DELETE FROM records WHERE id = %s AND user_id = %s",
-            (record_id, user_id),
+            "SELECT 1 FROM contact_emails WHERE provider = ? AND message_id = ? LIMIT 1",
+            (provider, message_id),
+        )
+        return cur.fetchone() is not None
+
+
+def add_contact_email(
+    contact_id: int,
+    provider: str,
+    message_id: str,
+    connection_id: Optional[int],
+    received_at: Optional[str],
+    subject: str,
+    summary: str,
+    action_items: str,
+    raw_snippet: str,
+) -> Optional[dict]:
+    """Insert one new processed email. Returns None if already processed (dup message_id)."""
+    with cursor() as cur:
+        try:
+            cur.execute(
+                """INSERT INTO contact_emails
+                      (contact_id, connection_id, provider, message_id, received_at,
+                       subject, summary, action_items, raw_snippet)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (contact_id, connection_id, provider, message_id, received_at,
+                 subject, summary, action_items, raw_snippet),
+            )
+        except (sqlite3.IntegrityError, Exception) as e:
+            # libsql_client surfaces uniqueness violations as a generic
+            # LibsqlError. Detect by message substring as a portable fallback.
+            msg = str(e).lower()
+            if isinstance(e, sqlite3.IntegrityError) or "unique" in msg or "constraint" in msg:
+                return None
+            raise
+        new_id = cur.lastrowid
+        cur.execute(
+            """UPDATE contacts
+               SET total_emails = total_emails + 1, last_seen_at = CURRENT_TIMESTAMP
+               WHERE id = ?""",
+            (contact_id,),
+        )
+        cur.execute("SELECT * FROM contact_emails WHERE id = ?", (new_id,))
+        return _row(cur.fetchone())
+
+
+def list_contact_emails(contact_id: int, limit: int = 50) -> list[dict]:
+    """Timeline view, newest first. NULL received_at sorted to the bottom."""
+    with cursor() as cur:
+        cur.execute(
+            """SELECT * FROM contact_emails
+               WHERE contact_id = ?
+               ORDER BY received_at IS NULL, received_at DESC, created_at DESC
+               LIMIT ?""",
+            (contact_id, limit),
+        )
+        return [_row(r) for r in cur.fetchall()]
+
+
+def get_recent_summaries(contact_id: int, n: int = 5) -> list[dict]:
+    """Used to feed prior context back into Gemini when summarizing a new email."""
+    with cursor() as cur:
+        cur.execute(
+            """SELECT subject, summary, action_items, received_at
+               FROM contact_emails
+               WHERE contact_id = ?
+               ORDER BY received_at IS NULL, received_at DESC, created_at DESC
+               LIMIT ?""",
+            (contact_id, n),
+        )
+        return [_row(r) for r in cur.fetchall()]
+
+
+def delete_contact_email(email_id: int) -> None:
+    with cursor() as cur:
+        cur.execute(
+            "SELECT contact_id FROM contact_emails WHERE id = ?",
+            (email_id,),
+        )
+        row = _row(cur.fetchone())
+        if not row:
+            return
+        cid = row["contact_id"]
+        cur.execute("DELETE FROM contact_emails WHERE id = ?", (email_id,))
+        cur.execute(
+            "UPDATE contacts SET total_emails = MAX(0, total_emails - 1) WHERE id = ?",
+            (cid,),
         )
 
 
-def clear_records(user_id: int) -> None:
+# ─── dossier ─────────────────────────────────────────────────────────────
+
+def upsert_dossier(
+    contact_id: int,
+    rolling_summary: str,
+    open_action_items: str,
+    current_topic: str,
+    relationship_stage: str,
+) -> dict:
     with cursor() as cur:
-        cur.execute("DELETE FROM records WHERE user_id = %s", (user_id,))
+        cur.execute(
+            """INSERT INTO contact_dossier
+                  (contact_id, rolling_summary, open_action_items, current_topic, relationship_stage, updated_at)
+               VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+               ON CONFLICT(contact_id) DO UPDATE SET
+                   rolling_summary = excluded.rolling_summary,
+                   open_action_items = excluded.open_action_items,
+                   current_topic = excluded.current_topic,
+                   relationship_stage = excluded.relationship_stage,
+                   updated_at = CURRENT_TIMESTAMP""",
+            (contact_id, rolling_summary, open_action_items, current_topic, relationship_stage),
+        )
+        cur.execute("SELECT * FROM contact_dossier WHERE contact_id = ?", (contact_id,))
+        return _row(cur.fetchone())
+
+
+def get_dossier(contact_id: int) -> Optional[dict]:
+    with cursor() as cur:
+        cur.execute("SELECT * FROM contact_dossier WHERE contact_id = ?", (contact_id,))
+        return _row(cur.fetchone())
