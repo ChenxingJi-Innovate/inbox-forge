@@ -260,7 +260,23 @@ def update_oauth_tokens(conn_id: int, access_token_enc: str, expires_at: Optiona
 
 
 def delete_oauth_connection(conn_id: int) -> None:
+    """Sign out of a mailbox AND wipe everything that came through it.
+
+    User-facing semantic: this is "退出账号", not just "drop the token".
+    Drop the archived emails first, then any contact whose archive is now
+    empty (their dossier cascades away via ON DELETE CASCADE on contact_id),
+    then the oauth_connections row itself. Contacts that still have emails
+    from OTHER connections are preserved with their counter recomputed.
+    """
     with cursor() as cur:
+        cur.execute("DELETE FROM contact_emails WHERE connection_id = ?", (conn_id,))
+        cur.execute(
+            """UPDATE contacts
+               SET total_emails = (
+                   SELECT COUNT(*) FROM contact_emails WHERE contact_id = contacts.id
+               )"""
+        )
+        cur.execute("DELETE FROM contacts WHERE total_emails = 0")
         cur.execute("DELETE FROM oauth_connections WHERE id = ?", (conn_id,))
 
 
