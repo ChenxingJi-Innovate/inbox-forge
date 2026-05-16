@@ -334,9 +334,19 @@ const state = {
 // user synced in (ZH stages or EN stages). For display we always translate
 // to the user's CURRENT lang so the badge follows the top-bar toggle.
 const STAGE_CANON = {
+  // Current taxonomy
   '待跟进': 'needs_reply', '跟进中': 'in_progress', '等待对方': 'awaiting_them', '已处理': 'resolved',
   'Needs reply': 'needs_reply', 'In progress': 'in_progress', 'Awaiting them': 'awaiting_them', 'Resolved': 'resolved',
   'needs_reply': 'needs_reply', 'in_progress': 'in_progress', 'awaiting_them': 'awaiting_them', 'resolved': 'resolved',
+  // Legacy values from earlier sweeps (pre-2026-05-16 relationship-phase taxonomy). Map to the closest action status.
+  '初识': 'needs_reply',         // first contact: ball is with me to respond
+  '在谈': 'in_progress',
+  '已合作': 'in_progress',       // active partnership = still in flight
+  '已结束': 'resolved',
+  'New': 'needs_reply',
+  'In discussion': 'in_progress',
+  'Active': 'in_progress',
+  'Closed': 'resolved',
 };
 const STAGE_LABEL = {
   zh: { needs_reply: '待跟进', in_progress: '跟进中', awaiting_them: '等待对方', resolved: '已处理' },
@@ -398,7 +408,7 @@ const I18N = {
     sync_state_read: '仅已读',
     sync_state_all: '全部',
     sync_keyword: '关键词 (可选)',
-    sync_limit: '上限',
+    sync_limit: '邮件数量上限',
     sync_go: '同步',
     sync_hint: '不填日期 = 不限。关键词支持 Gmail 搜索语法 (例如 from:acme.com 或 subject:合同)。Outlook 搜索时其他过滤器会被忽略。',
     search_placeholder: '搜索联系人/公司/邮箱...',
@@ -466,7 +476,7 @@ const I18N = {
     sync_state_read: 'Read only',
     sync_state_all: 'All',
     sync_keyword: 'Keyword (optional)',
-    sync_limit: 'Limit',
+    sync_limit: 'Max emails',
     sync_go: 'Sync',
     sync_hint: 'Leave dates blank for no bound. Keyword accepts Gmail search syntax (e.g. from:acme.com, subject:contract). Outlook ignores other filters when a keyword is provided.',
     search_placeholder: 'Search contacts / company / email...',
