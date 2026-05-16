@@ -66,7 +66,7 @@ CONTEXT_PROMPT_ZH = """你是这位用户的智能邮件助手。
     "rolling_summary": "更新后的整体档案, 2 到 4 句, 描述这位联系人与用户之间的整体进展",
     "open_action_items": "更新后的未完成清单 (合并新旧, 已完成的删掉), 每行以 • 开头; 若无写「无」",
     "current_topic": "当前正在沟通的主要议题, 一行内",
-    "relationship_stage": "从 [初识, 在谈, 已合作, 已结束] 中选一个最贴切的"
+    "relationship_stage": "从 [待跟进, 跟进中, 等待对方, 已处理] 中选一个 (含义: 待跟进=对方发来邮件我还没回; 跟进中=正在来回沟通; 等待对方=我发出去等他回; 已处理=话题已闭环)"
   }}
 }}
 
@@ -106,7 +106,7 @@ Return strictly the following JSON (no markdown fences, no extra prose):
     "rolling_summary": "updated dossier, 2 to 4 sentences describing overall state between user and contact",
     "open_action_items": "merged open-items list (drop completed, add new), one per line prefixed with • ; if none, write None",
     "current_topic": "main topic currently in conversation, one line",
-    "relationship_stage": "one of [New, In discussion, Active, Closed]"
+    "relationship_stage": "one of [Needs reply, In progress, Awaiting them, Resolved] (Needs reply = they wrote, I haven't answered; In progress = active back-and-forth; Awaiting them = I sent, waiting for response; Resolved = thread closed)"
   }}
 }}
 

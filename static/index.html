@@ -69,11 +69,16 @@
   .contact-row[data-active="true"] { background:#111111; color:#FFFFFF; }
   .contact-row[data-active="true"] .row-meta { color:#A5A5A5; }
   .contact-row[data-active="true"] .row-preview { color:#CDCDCD; }
-  .stage-pill { font-size: 12px; padding: 2px 10px; border-radius: 999px; font-weight: 600; }
-  .stage-在谈, .stage-In.discussion { background:#FFE0E0; color:#9B0000; }
-  .stage-已合作, .stage-Active { background:#E0F2E9; color:#0F6B3E; }
-  .stage-初识, .stage-New { background:#F1F1F1; color:#4A4A4A; }
-  .stage-已结束, .stage-Closed { background:#E9E9E9; color:#767676; }
+  /* Base + default colors (gray fallback for unknown / legacy stages) */
+  .stage-pill { font-size: 12px; padding: 2px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap; background:#F1F1F1; color:#4A4A4A; }
+  /* 待跟进 / Needs reply: I owe them. Red urgency. */
+  .stage-pill.stage-待跟进, .stage-pill.stage-Needs.reply { background:#FFE0E0; color:#9B0000; }
+  /* 跟进中 / In progress: active. Amber. */
+  .stage-pill.stage-跟进中, .stage-pill.stage-In.progress { background:#FFF1D6; color:#8A5500; }
+  /* 等待对方 / Awaiting them: their move. Blue. */
+  .stage-pill.stage-等待对方, .stage-pill.stage-Awaiting.them { background:#DFEEFF; color:#0F4C8A; }
+  /* 已处理 / Resolved: done. Green. */
+  .stage-pill.stage-已处理, .stage-pill.stage-Resolved { background:#E0F2E9; color:#0F6B3E; }
   .scroll-y { overflow-y: auto; }
   .scroll-y::-webkit-scrollbar { width: 8px; }
   .scroll-y::-webkit-scrollbar-thumb { background: #E9E9E9; border-radius: 99px; }
@@ -134,12 +139,50 @@
 <!-- ──────────── MAIN: TWO-PANE ──────────── -->
 <div id="mainView" class="relative z-10 hidden max-w-7xl mx-auto px-600 pt-500 pb-1200">
 
-  <!-- header row: connections + sweep -->
+  <!-- header row: connections (chips only, no inline sweep) -->
   <div id="connBar" class="flex flex-wrap items-center gap-300 mb-500"></div>
+
+  <!-- Sync panel: date range + read state + keyword + sync button -->
+  <div id="syncPanel" class="hidden bg-mochimalist rounded-600 shadow-floating p-500 mb-500">
+    <div class="flex items-baseline gap-300 mb-400">
+      <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold" data-i18n="sync_kicker"></div>
+      <div class="text-200 font-semibold text-cosmicore" data-i18n="sync_h"></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-5 gap-300 items-end">
+      <div>
+        <label class="block text-100 text-roboflow-500 font-semibold mb-100" data-i18n="sync_since"></label>
+        <input id="syncSince" type="date" class="w-full bg-roboflow-50 border-0 rounded-300 px-300 py-200 text-200 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+      </div>
+      <div>
+        <label class="block text-100 text-roboflow-500 font-semibold mb-100" data-i18n="sync_until"></label>
+        <input id="syncUntil" type="date" class="w-full bg-roboflow-50 border-0 rounded-300 px-300 py-200 text-200 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+      </div>
+      <div>
+        <label class="block text-100 text-roboflow-500 font-semibold mb-100" data-i18n="sync_state"></label>
+        <select id="syncState" class="w-full bg-roboflow-50 border-0 rounded-300 px-300 py-200 text-200 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+          <option value="unread" data-i18n="sync_state_unread"></option>
+          <option value="read" data-i18n="sync_state_read"></option>
+          <option value="all" data-i18n="sync_state_all"></option>
+        </select>
+      </div>
+      <div>
+        <label class="block text-100 text-roboflow-500 font-semibold mb-100" data-i18n="sync_keyword"></label>
+        <input id="syncKeyword" type="text" placeholder="" class="w-full bg-roboflow-50 border-0 rounded-300 px-300 py-200 text-200 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+      </div>
+      <div>
+        <label class="block text-100 text-roboflow-500 font-semibold mb-100" data-i18n="sync_limit"></label>
+        <div class="flex gap-200">
+          <input id="syncLimit" type="number" min="1" max="500" value="50" class="w-1600 bg-roboflow-50 border-0 rounded-300 px-300 py-200 text-200 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+          <button id="syncGo" class="flex-1 px-400 py-200 rounded-300 bg-pushpin-450 text-mochimalist font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="sync_go"></button>
+        </div>
+      </div>
+    </div>
+    <p class="mt-300 text-100 text-roboflow-400 leading-relaxed" data-i18n="sync_hint"></p>
+  </div>
 
   <div class="grid gap-500" style="grid-template-columns: 360px 1fr;">
 
-    <!-- ───── LEFT: contact list ───── -->
+    <!-- ───── LEFT: contact directory ───── -->
     <aside class="bg-mochimalist rounded-600 shadow-floating p-500 h-[calc(100vh-180px)] flex flex-col">
       <div class="flex items-baseline justify-between mb-400 px-200">
         <div>
@@ -147,7 +190,22 @@
           <div id="contactCount" class="text-300 font-semibold text-cosmicore mt-100"></div>
         </div>
       </div>
-      <div id="contactList" class="space-y-200 scroll-y flex-1 pr-200"></div>
+
+      <!-- Search + sort -->
+      <div class="px-200 mb-300 space-y-200">
+        <input id="contactSearch" type="text" placeholder="" class="w-full bg-roboflow-50 border-0 rounded-300 px-300 py-200 text-100 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+        <div class="flex p-100 bg-roboflow-100 rounded-pill text-100">
+          <button class="sort-btn flex-1 py-100 rounded-pill font-semibold transition-colors" data-sort="recent" data-i18n="sort_recent"></button>
+          <button class="sort-btn flex-1 py-100 rounded-pill font-semibold transition-colors" data-sort="name" data-i18n="sort_name"></button>
+          <button class="sort-btn flex-1 py-100 rounded-pill font-semibold transition-colors" data-sort="company" data-i18n="sort_company"></button>
+        </div>
+      </div>
+
+      <!-- Contact list (rows). When sorted alphabetically a letter index column appears next to it. -->
+      <div class="flex-1 flex min-h-0 gap-200">
+        <div id="contactList" class="space-y-200 scroll-y flex-1 pr-200"></div>
+        <div id="letterIndex" class="hidden flex flex-col items-center text-100 text-roboflow-400 select-none pr-100"></div>
+      </div>
       <div id="contactListEmpty" class="hidden flex-1 flex items-center justify-center text-roboflow-400 text-100 text-center px-400">
         <span data-i18n="contacts_empty"></span>
       </div>
@@ -268,7 +326,31 @@ const state = {
   contacts: [],
   selectedId: null,
   detailCache: {},
+  sort: (localStorage.getItem('sort') || 'recent'),  // 'recent' | 'name' | 'company'
+  search: '',
 };
+
+// Stage canonicalization. The LLM picks the value in whatever language the
+// user synced in (ZH stages or EN stages). For display we always translate
+// to the user's CURRENT lang so the badge follows the top-bar toggle.
+const STAGE_CANON = {
+  '待跟进': 'needs_reply', '跟进中': 'in_progress', '等待对方': 'awaiting_them', '已处理': 'resolved',
+  'Needs reply': 'needs_reply', 'In progress': 'in_progress', 'Awaiting them': 'awaiting_them', 'Resolved': 'resolved',
+  'needs_reply': 'needs_reply', 'in_progress': 'in_progress', 'awaiting_them': 'awaiting_them', 'resolved': 'resolved',
+};
+const STAGE_LABEL = {
+  zh: { needs_reply: '待跟进', in_progress: '跟进中', awaiting_them: '等待对方', resolved: '已处理' },
+  en: { needs_reply: 'Needs reply', in_progress: 'In progress', awaiting_them: 'Awaiting them', resolved: 'Resolved' },
+};
+const STAGE_CLASS = {
+  needs_reply: 'stage-待跟进', in_progress: 'stage-跟进中',
+  awaiting_them: 'stage-等待对方', resolved: 'stage-已处理',
+};
+function stageDisplay(raw) {
+  const canon = STAGE_CANON[(raw || '').trim()];
+  if (!canon) return { label: raw || t('new_contact'), cls: '' };
+  return { label: STAGE_LABEL[state.lang][canon], cls: STAGE_CLASS[canon] };
+}
 
 // ───────── i18n ─────────
 const I18N = {
@@ -302,11 +384,29 @@ const I18N = {
     rolling_summary: '档案摘要',
     open_items: '未完成事项',
     none_yet: '尚无内容',
-    new_contact: '初识',
+    new_contact: '待跟进',
     open_link_gmail: '在 Gmail 中查看',
     open_link_outlook: '在 Outlook 中查看',
     emails_count: '{n} 封邮件',
     last_seen: '最近 {t}',
+    sync_kicker: '同步',
+    sync_h: '从邮箱拉取并自动归档',
+    sync_since: '起始日期',
+    sync_until: '截止日期',
+    sync_state: '邮件状态',
+    sync_state_unread: '仅未读',
+    sync_state_read: '仅已读',
+    sync_state_all: '全部',
+    sync_keyword: '关键词 (可选)',
+    sync_limit: '上限',
+    sync_go: '同步',
+    sync_hint: '不填日期 = 不限。关键词支持 Gmail 搜索语法 (例如 from:acme.com 或 subject:合同)。Outlook 搜索时其他过滤器会被忽略。',
+    search_placeholder: '搜索联系人/公司/邮箱...',
+    sort_recent: '最近往来',
+    sort_name: 'A-Z 姓名',
+    sort_company: 'A-Z 公司',
+    stage_待跟进: '待跟进', stage_跟进中: '跟进中', stage_等待对方: '等待对方', stage_已处理: '已处理',
+    stage_Needs_reply: '待跟进', stage_In_progress: '跟进中', stage_Awaiting_them: '等待对方', stage_Resolved: '已处理',
     quick_analyze: '快速解析',
     quick_kicker: '一次性 · 不入档',
     quick_h: '快速解析单封邮件',
@@ -352,11 +452,29 @@ const I18N = {
     rolling_summary: 'Rolling summary',
     open_items: 'Open items',
     none_yet: 'Nothing yet',
-    new_contact: 'New',
+    new_contact: 'Needs reply',
     open_link_gmail: 'Open in Gmail',
     open_link_outlook: 'Open in Outlook',
     emails_count: '{n} email(s)',
     last_seen: 'last {t}',
+    sync_kicker: 'Sync',
+    sync_h: 'Pull and auto-file from your inbox',
+    sync_since: 'From date',
+    sync_until: 'Until date',
+    sync_state: 'Read state',
+    sync_state_unread: 'Unread only',
+    sync_state_read: 'Read only',
+    sync_state_all: 'All',
+    sync_keyword: 'Keyword (optional)',
+    sync_limit: 'Limit',
+    sync_go: 'Sync',
+    sync_hint: 'Leave dates blank for no bound. Keyword accepts Gmail search syntax (e.g. from:acme.com, subject:contract). Outlook ignores other filters when a keyword is provided.',
+    search_placeholder: 'Search contacts / company / email...',
+    sort_recent: 'Latest',
+    sort_name: 'A-Z name',
+    sort_company: 'A-Z company',
+    stage_待跟进: 'Needs reply', stage_跟进中: 'In progress', stage_等待对方: 'Awaiting them', stage_已处理: 'Resolved',
+    stage_Needs_reply: 'Needs reply', stage_In_progress: 'In progress', stage_Awaiting_them: 'Awaiting them', stage_Resolved: 'Resolved',
     quick_analyze: 'Quick analyze',
     quick_kicker: 'One-shot · not filed',
     quick_h: 'Quick analyze a single email',
@@ -443,6 +561,7 @@ async function refreshAll() {
   state.contacts = contactsResp.contacts;
   renderShell();
   renderConnBar();
+  renderSyncPanel();
   renderContactList();
   if (state.selectedId && !state.contacts.find((c) => c.id === state.selectedId)) {
     state.selectedId = null;
@@ -472,35 +591,98 @@ function renderConnBar() {
       <div class="flex items-center gap-200 bg-mochimalist rounded-pill px-400 py-200 shadow-floating text-100">
         ${dot}
         <span class="font-semibold text-cosmicore">${escapeHtml(c.provider_email)}</span>
-        <button data-act="sweep" data-id="${c.id}" class="px-300 py-100 rounded-pill bg-pushpin-450 text-mochimalist font-semibold hover:bg-pushpin-500 transition-colors">${escapeHtml(t('sync_now'))}</button>
         <button data-act="disconnect" data-id="${c.id}" class="px-200 text-roboflow-500 hover:text-pushpin-450 transition-colors" title="${escapeHtml(t('disconnect'))}">×</button>
       </div>`;
   }).join('');
   bar.innerHTML = chips;
 }
 
+function renderSyncPanel() {
+  const panel = $('syncPanel');
+  panel.classList.toggle('hidden', !state.connections.length);
+  // Update sort button active state every time the panel re-renders (lang toggle path)
+  document.querySelectorAll('.sort-btn').forEach((b) => {
+    const on = b.dataset.sort === state.sort;
+    b.style.background = on ? '#111111' : 'transparent';
+    b.style.color = on ? '#FFFFFF' : '#4A4A4A';
+  });
+  // Pull i18n placeholders that data-i18n doesn't cover (since placeholder is an attr)
+  $('contactSearch').placeholder = t('search_placeholder');
+  $('syncKeyword').placeholder = state.lang === 'zh' ? 'from:acme.com 或 subject:合同' : 'from:acme.com or subject:contract';
+}
+
+function _sortKey(c) {
+  if (state.sort === 'name')    return (c.name || c.email || '').toLowerCase();
+  if (state.sort === 'company') return (c.company || '').toLowerCase();
+  return c.last_seen_at || '';
+}
+
+function _filteredSorted() {
+  const q = state.search.trim().toLowerCase();
+  let arr = state.contacts;
+  if (q) {
+    arr = arr.filter((c) => (
+      (c.name || '').toLowerCase().includes(q) ||
+      (c.email || '').toLowerCase().includes(q) ||
+      (c.company || '').toLowerCase().includes(q)
+    ));
+  }
+  arr = arr.slice().sort((a, b) => {
+    const ka = _sortKey(a), kb = _sortKey(b);
+    if (state.sort === 'recent') return (kb || '').localeCompare(ka || '');
+    if (state.sort === 'company') {
+      const aa = ka || '￿'; const bb = kb || '￿';
+      return aa.localeCompare(bb, undefined, { sensitivity: 'base' });
+    }
+    return ka.localeCompare(kb, undefined, { sensitivity: 'base' });
+  });
+  return arr;
+}
+
+function _letterOf(c) {
+  const field = state.sort === 'company' ? (c.company || '') : (c.name || c.email || '');
+  const ch = field.trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(ch) ? ch : '#';
+}
+
 function renderContactList() {
   const wrap = $('contactList');
   const empty = $('contactListEmpty');
-  $('contactCount').textContent = t('emails_count', { n: state.contacts.length });
-  if (!state.contacts.length) {
+  const idxBar = $('letterIndex');
+  const arr = _filteredSorted();
+  $('contactCount').textContent = t('emails_count', { n: arr.length });
+
+  if (!arr.length) {
     wrap.innerHTML = '';
+    idxBar.classList.add('hidden');
     empty.classList.remove('hidden');
     return;
   }
   empty.classList.add('hidden');
 
-  wrap.innerHTML = state.contacts.map((c) => {
-    const stage = c.relationship_stage || t('new_contact');
-    const stageCls = `stage-${stage.replace(/\s+/g, '.')}`;
+  // Render rows. When sorted alphabetically we tag rows with data-letter
+  // and surface letter sections so the side index can scroll-jump.
+  const useLetters = state.sort !== 'recent';
+  let lastLetter = '';
+  const rows = arr.map((c) => {
+    const { label: stageLabel, cls: stageCls } = stageDisplay(c.relationship_stage);
+    const stageDisplayText = stageLabel || t('new_contact');
     const preview = c.current_topic || c.rolling_summary || '';
     const active = c.id === state.selectedId;
-    return `
+    let header = '';
+    if (useLetters) {
+      const L = _letterOf(c);
+      if (L !== lastLetter) {
+        header = `<div data-letter-anchor="${L}" class="px-200 pt-300 pb-100 text-100 font-semibold text-roboflow-400 tracking-widest">${escapeHtml(L)}</div>`;
+        lastLetter = L;
+      }
+    }
+    return `${header}
       <button class="contact-row w-full text-left px-400 py-400 rounded-400 hover:bg-roboflow-50 transition-colors duration-300 ease-apple"
               data-id="${c.id}" data-active="${active}">
         <div class="flex items-center justify-between gap-300">
           <div class="font-semibold truncate">${escapeHtml(c.name || c.email)}</div>
-          <span class="stage-pill ${stageCls}">${escapeHtml(stage)}</span>
+          <span class="stage-pill ${stageCls}">${escapeHtml(stageDisplayText)}</span>
         </div>
         <div class="row-meta text-100 text-roboflow-500 mt-100 truncate">
           ${escapeHtml(c.email)}${c.company ? ' · ' + escapeHtml(c.company) : ''} · ${escapeHtml(t('last_seen', { t: relTime(c.last_seen_at) }))}
@@ -508,6 +690,20 @@ function renderContactList() {
         ${preview ? `<div class="row-preview text-100 text-roboflow-600 mt-200 line-clamp-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(preview)}</div>` : ''}
       </button>`;
   }).join('');
+  wrap.innerHTML = rows;
+
+  // Letter index (only visible when alphabetical sort)
+  if (useLetters) {
+    const present = new Set(arr.map(_letterOf));
+    const full = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z','#'];
+    idxBar.innerHTML = full.map((L) => {
+      const on = present.has(L);
+      return `<button class="${on ? 'text-cosmicore hover:text-pushpin-450' : 'text-roboflow-300 cursor-not-allowed'} font-semibold py-50 px-100 transition-colors" ${on ? `data-letter-jump="${L}"` : 'disabled'}>${L}</button>`;
+    }).join('');
+    idxBar.classList.remove('hidden');
+  } else {
+    idxBar.classList.add('hidden');
+  }
 }
 
 function renderDetail(payload) {
@@ -520,8 +716,8 @@ function renderDetail(payload) {
   $('detail').classList.remove('hidden');
 
   const { contact, emails } = payload;
-  const stage = contact.relationship_stage || t('new_contact');
-  const stageCls = `stage-${stage.replace(/\s+/g, '.')}`;
+  const { label: stageLabel, cls: stageCls } = stageDisplay(contact.relationship_stage);
+  const stage = stageLabel || t('new_contact');
   const opens = (contact.open_action_items || '').split('\n').map((s) => s.trim()).filter(Boolean);
   const rolling = contact.rolling_summary || '';
 
@@ -600,16 +796,31 @@ async function openContact(id, opts = {}) {
   }
 }
 
-async function sweep(connId) {
+async function sweepAll() {
+  if (!state.connections.length) return;
+  const body = {
+    lang: state.lang,
+    read_state: $('syncState').value || 'unread',
+    since: $('syncSince').value || null,
+    until: $('syncUntil').value || null,
+    keyword: ($('syncKeyword').value || '').trim() || null,
+    limit: parseInt($('syncLimit').value || '50', 10),
+  };
   showLoading(t('syncing'));
+  let totalProcessed = 0, totalSkipped = 0, totalFailed = 0;
   try {
-    const data = await api('POST', `/api/inbox/${connId}/sweep`, { limit: 10, lang: state.lang });
-    let msg = t('synced_n', { n: data.processed });
-    if (data.skipped_duplicate) msg += t('skipped_n', { n: data.skipped_duplicate });
-    if (data.failed && data.failed.length) msg += t('failed_n', { n: data.failed.length });
-    if (!data.processed && !data.skipped_duplicate) msg = t('no_new');
+    // Sweep each connection in series so the toast accurately aggregates.
+    for (const c of state.connections) {
+      const data = await api('POST', `/api/inbox/${c.id}/sweep`, body);
+      totalProcessed += (data.processed || 0);
+      totalSkipped   += (data.skipped_duplicate || 0);
+      totalFailed    += (data.failed?.length || 0);
+    }
+    let msg = t('synced_n', { n: totalProcessed });
+    if (totalSkipped) msg += t('skipped_n', { n: totalSkipped });
+    if (totalFailed)  msg += t('failed_n',  { n: totalFailed });
+    if (!totalProcessed && !totalSkipped) msg = t('no_new');
     showToast(msg);
-    // invalidate detail cache since dossiers may have updated
     state.detailCache = {};
     await refreshAll();
   } catch (e) {
@@ -655,6 +866,7 @@ function wire() {
       localStorage.setItem('lang', state.lang);
       applyI18n();
       renderConnBar();
+      renderSyncPanel();
       renderContactList();
       if (state.selectedId && state.detailCache[state.selectedId]) renderDetail(state.detailCache[state.selectedId]);
     });
@@ -671,14 +883,36 @@ function wire() {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
     const id = +btn.dataset.id;
-    if (btn.dataset.act === 'sweep') sweep(id);
     if (btn.dataset.act === 'disconnect') disconnect(id);
   });
+
+  $('syncGo').addEventListener('click', sweepAll);
 
   $('contactList').addEventListener('click', (e) => {
     const row = e.target.closest('.contact-row');
     if (!row) return;
     openContact(+row.dataset.id);
+  });
+
+  $('contactSearch').addEventListener('input', (e) => {
+    state.search = e.target.value;
+    renderContactList();
+  });
+
+  document.querySelectorAll('.sort-btn').forEach((b) => {
+    b.addEventListener('click', () => {
+      state.sort = b.dataset.sort;
+      localStorage.setItem('sort', state.sort);
+      renderSyncPanel();    // refresh active-state styling
+      renderContactList();
+    });
+  });
+
+  $('letterIndex').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-letter-jump]');
+    if (!btn) return;
+    const anchor = $('contactList').querySelector(`[data-letter-anchor="${btn.dataset.letterJump}"]`);
+    if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
 
   $('detail').addEventListener('click', (e) => {

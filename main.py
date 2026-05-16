@@ -214,11 +214,34 @@ def _live_access_token(conn_id: int, provider: str) -> str:
     return new_access
 
 
-def _fetch_unread(conn: dict, access: str, limit: int) -> list[dict]:
+def _fetch_messages(
+    conn: dict,
+    access: str,
+    *,
+    read_state: str,
+    since: Optional[str],
+    until: Optional[str],
+    keyword: Optional[str],
+    limit: int,
+) -> list[dict]:
     if conn["provider"] == "google":
-        return inbox_gmail.fetch_unread(access, limit=limit)
+        return inbox_gmail.fetch_messages(
+            access,
+            read_state=read_state,
+            since=since,
+            until=until,
+            keyword=keyword,
+            limit=limit,
+        )
     if conn["provider"] == "microsoft":
-        return inbox_outlook.fetch_unread(access, limit=limit)
+        return inbox_outlook.fetch_messages(
+            access,
+            read_state=read_state,
+            since=since,
+            until=until,
+            keyword=keyword,
+            limit=limit,
+        )
     raise HTTPException(status_code=400, detail=f"Unsupported provider: {conn['provider']}")
 
 
@@ -230,7 +253,10 @@ async def inbox_unread(conn_id: int, limit: int = 5):
         raise HTTPException(status_code=404, detail="Connection not found")
     access = _live_access_token(conn_id, conn["provider"])
     try:
-        emails = _fetch_unread(conn, access, limit)
+        emails = _fetch_messages(
+            conn, access,
+            read_state="unread", since=None, until=None, keyword=None, limit=limit,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -247,25 +273,38 @@ async def inbox_disconnect(conn_id: int):
 # ---------- Inbox sweep: the auto-pipeline ----------
 
 class SweepBody(BaseModel):
-    limit: int = 10
+    limit: int = 50
     lang: str = "zh"
+    read_state: str = "unread"  # "unread" | "read" | "all"
+    since: Optional[str] = None  # "YYYY-MM-DD"
+    until: Optional[str] = None  # "YYYY-MM-DD"
+    keyword: Optional[str] = None
 
 
 @app.post("/api/inbox/{conn_id}/sweep")
 async def inbox_sweep(conn_id: int, body: SweepBody = SweepBody()):
-    """Pull unread → dedupe → analyze with contact context → store + update dossier.
+    """Pull messages matching the filter → dedupe → analyze with contact context
+    → store + update dossier.
 
-    This is the core auto-pipeline. Idempotent: rerunning is safe because
-    we skip any provider message_id we've already processed.
+    Idempotent: rerunning is safe because we skip any provider message_id we've
+    already processed (UNIQUE(provider, message_id) in contact_emails).
     """
     conn = db.get_oauth_connection(conn_id)
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found")
 
     lang = _norm_lang(body.lang)
+    read_state = body.read_state if body.read_state in ("unread", "read", "all") else "unread"
     access = _live_access_token(conn_id, conn["provider"])
     try:
-        raw_emails = _fetch_unread(conn, access, body.limit)
+        raw_emails = _fetch_messages(
+            conn, access,
+            read_state=read_state,
+            since=body.since or None,
+            until=body.until or None,
+            keyword=(body.keyword or "").strip() or None,
+            limit=body.limit,
+        )
     except HTTPException:
         raise
     except Exception as e:
