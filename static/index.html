@@ -621,9 +621,38 @@ function renderSyncPanel() {
   $('syncKeyword').placeholder = state.lang === 'zh' ? 'from:acme.com 或 subject:合同' : 'from:acme.com or subject:contract';
 }
 
+// Email-domain helpers for grouping. eTLD+1 = "joinhandshake.com" for both
+// "handshake@g.joinhandshake.com" and "handshake@notifications.joinhandshake.com".
+// We take the last two dot-components which is fine for *.com/.net/.org/.io
+// and only mis-groups exotic suffixes like *.co.uk, which we accept as a
+// known limitation.
+function _domainOf(email) {
+  const at = (email || '').lastIndexOf('@');
+  return at >= 0 ? (email || '').slice(at + 1).toLowerCase() : '';
+}
+function _companyKey(c) {
+  const d = _domainOf(c.email);
+  if (!d) return '~';
+  const parts = d.split('.');
+  return parts.slice(-2).join('.');
+}
+function _companyDisplay(group) {
+  // Prefer the most-common non-empty extracted company name; fallback to a
+  // capitalized root of the registrable domain so the header is never empty.
+  const counts = {};
+  for (const c of group) {
+    const name = (c.company || '').trim();
+    if (name) counts[name] = (counts[name] || 0) + 1;
+  }
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  if (sorted.length) return sorted[0][0];
+  const root = (_companyKey(group[0]) || '').split('.')[0];
+  return root ? root.charAt(0).toUpperCase() + root.slice(1) : '(unknown)';
+}
+
 function _sortKey(c) {
   if (state.sort === 'name')    return (c.name || c.email || '').toLowerCase();
-  if (state.sort === 'company') return (c.company || '').toLowerCase();
+  if (state.sort === 'company') return _companyKey(c);
   return c.last_seen_at || '';
 }
 
@@ -650,7 +679,15 @@ function _filteredSorted() {
 }
 
 function _letterOf(c) {
-  const field = state.sort === 'company' ? (c.company || '') : (c.name || c.email || '');
+  if (state.sort === 'company') {
+    // Use the resolved company-display name, not the raw extracted field,
+    // because the display name can be a domain fallback when company is empty.
+    const k = _companyKey(c);
+    const field = (state.sort === 'company') ? _companyDisplay([c]) : (c.name || c.email || '');
+    const ch = (field || k).trim().charAt(0).toUpperCase();
+    return /[A-Z]/.test(ch) ? ch : '#';
+  }
+  const field = (c.name || c.email || '');
   const ch = field.trim().charAt(0).toUpperCase();
   return /[A-Z]/.test(ch) ? ch : '#';
 }
@@ -670,37 +707,76 @@ function renderContactList() {
   }
   empty.classList.add('hidden');
 
-  // Render rows. When sorted alphabetically we tag rows with data-letter
-  // and surface letter sections so the side index can scroll-jump.
-  const useLetters = state.sort !== 'recent';
-  let lastLetter = '';
-  const rows = arr.map((c) => {
+  // Single-row renderer reused by both flat and grouped layouts.
+  const rowHtml = (c, indented) => {
     const { label: stageLabel, cls: stageCls } = stageDisplay(c.relationship_stage);
     const stageDisplayText = stageLabel || t('new_contact');
     const preview = c.current_topic || c.rolling_summary || '';
     const active = c.id === state.selectedId;
-    let header = '';
-    if (useLetters) {
-      const L = _letterOf(c);
-      if (L !== lastLetter) {
-        header = `<div data-letter-anchor="${L}" class="px-200 pt-300 pb-100 text-100 font-semibold text-roboflow-400 tracking-widest">${escapeHtml(L)}</div>`;
-        lastLetter = L;
-      }
-    }
-    return `${header}
-      <button class="contact-row w-full text-left px-400 py-400 rounded-400 hover:bg-roboflow-50 transition-colors duration-300 ease-apple"
+    return `
+      <button class="contact-row w-full text-left ${indented ? 'pl-500 pr-400' : 'px-400'} py-400 rounded-400 hover:bg-roboflow-50 transition-colors duration-300 ease-apple"
               data-id="${c.id}" data-active="${active}">
         <div class="flex items-center justify-between gap-300">
           <div class="font-semibold truncate">${escapeHtml(c.name || c.email)}</div>
           <span class="stage-pill ${stageCls}">${escapeHtml(stageDisplayText)}</span>
         </div>
         <div class="row-meta text-100 text-roboflow-500 mt-100 truncate">
-          ${escapeHtml(c.email)}${c.company ? ' · ' + escapeHtml(c.company) : ''} · ${escapeHtml(t('last_seen', { t: relTime(c.last_seen_at) }))}
+          ${escapeHtml(c.email)} · ${escapeHtml(t('last_seen', { t: relTime(c.last_seen_at) }))}
         </div>
         ${preview ? `<div class="row-preview text-100 text-roboflow-600 mt-200 line-clamp-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(preview)}</div>` : ''}
       </button>`;
-  }).join('');
-  wrap.innerHTML = rows;
+  };
+
+  const useLetters = state.sort !== 'recent';
+  let html = '';
+  let lastLetter = '';
+
+  if (state.sort === 'company') {
+    // Group contacts by eTLD+1, each group rendered under a non-clickable header.
+    const groups = new Map();
+    for (const c of arr) {
+      const k = _companyKey(c);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(c);
+    }
+    // Sort groups by display name; sort contacts within a group by most-recent activity.
+    const groupArr = Array.from(groups.values()).sort((a, b) => {
+      const da = _companyDisplay(a).toLowerCase();
+      const db = _companyDisplay(b).toLowerCase();
+      return da.localeCompare(db, undefined, { sensitivity: 'base' });
+    });
+    for (const grp of groupArr) {
+      grp.sort((x, y) => (y.last_seen_at || '').localeCompare(x.last_seen_at || ''));
+      const head = grp[0];
+      const L = _letterOf(head);
+      if (useLetters && L !== lastLetter) {
+        html += `<div data-letter-anchor="${L}" class="px-200 pt-300 pb-100 text-100 font-semibold text-roboflow-400 tracking-widest">${escapeHtml(L)}</div>`;
+        lastLetter = L;
+      }
+      const displayName = _companyDisplay(grp);
+      const totalEmails = grp.reduce((acc, c) => acc + (c.total_emails || 0), 0);
+      html += `
+        <div class="px-300 pt-300 pb-100 mt-200 flex items-baseline justify-between gap-200">
+          <div class="text-200 font-semibold text-cosmicore truncate">${escapeHtml(displayName)}</div>
+          <div class="text-100 text-roboflow-400 whitespace-nowrap">
+            ${escapeHtml(state.lang === 'zh' ? `${grp.length} 人 · ${totalEmails} 封` : `${grp.length} contact${grp.length > 1 ? 's' : ''} · ${totalEmails} email${totalEmails !== 1 ? 's' : ''}`)}
+          </div>
+        </div>`;
+      for (const c of grp) html += rowHtml(c, /*indented*/ true);
+    }
+  } else {
+    for (const c of arr) {
+      if (useLetters) {
+        const L = _letterOf(c);
+        if (L !== lastLetter) {
+          html += `<div data-letter-anchor="${L}" class="px-200 pt-300 pb-100 text-100 font-semibold text-roboflow-400 tracking-widest">${escapeHtml(L)}</div>`;
+          lastLetter = L;
+        }
+      }
+      html += rowHtml(c, /*indented*/ false);
+    }
+  }
+  wrap.innerHTML = html;
 
   // Letter index (only visible when alphabetical sort)
   if (useLetters) {
