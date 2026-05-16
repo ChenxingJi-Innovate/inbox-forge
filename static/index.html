@@ -100,6 +100,7 @@
         <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="zh">中</button>
         <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="en">EN</button>
       </div>
+      <button id="openQuick" class="px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="quick_analyze"></button>
       <button id="connectGoogle" class="px-400 py-200 rounded-pill bg-mochimalist text-roboflow-700 font-semibold shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple flex items-center gap-200">
         <svg class="w-400 h-400" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
         <span data-i18n="connect_gmail"></span>
@@ -170,6 +171,81 @@
   </div>
 </div>
 
+<!-- ──────────── QUICK ANALYZE MODAL (stateless, Gemini vision) ──────────── -->
+<div id="quickModal" class="hidden fixed inset-0 bg-cosmicore/40 backdrop-blur-md z-40 flex items-start justify-center overflow-y-auto p-600">
+  <div class="bg-mochimalist rounded-600 shadow-lift w-full max-w-2xl my-1000 animate-fadeUp">
+    <div class="flex items-center justify-between p-600 border-b border-roboflow-100">
+      <div>
+        <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold" data-i18n="quick_kicker"></div>
+        <h2 class="text-400 font-bold text-cosmicore mt-100" data-i18n="quick_h"></h2>
+      </div>
+      <button id="quickClose" class="text-400 text-roboflow-500 hover:text-pushpin-450 transition-colors w-800 h-800 rounded-pill hover:bg-roboflow-50">×</button>
+    </div>
+
+    <div class="p-600 space-y-500">
+      <p class="text-100 text-roboflow-500 leading-relaxed" data-i18n="quick_sub"></p>
+
+      <!-- Mode toggle -->
+      <div class="flex p-100 bg-roboflow-100 rounded-pill text-100 max-w-xs">
+        <button class="quick-mode flex-1 py-200 px-300 rounded-pill font-semibold transition-colors" data-mode="upload" data-i18n="quick_mode_upload"></button>
+        <button class="quick-mode flex-1 py-200 px-300 rounded-pill font-semibold transition-colors" data-mode="text" data-i18n="quick_mode_text"></button>
+      </div>
+
+      <!-- Upload pane -->
+      <div data-pane="upload">
+        <label class="block cursor-pointer">
+          <div id="quickDrop" class="rounded-500 p-700 text-center bg-roboflow-50 hover:bg-pushpin-0 transition-colors" style="box-shadow: inset 0 0 0 1.5px #E9E9E9;">
+            <div class="w-1100 h-1100 rounded-pill bg-mochimalist mx-auto flex items-center justify-center shadow-floating mb-300">
+              <svg class="w-600 h-600 text-roboflow-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="17 8 12 3 7 8"/>
+                <line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+            </div>
+            <p class="text-200 text-cosmicore font-semibold" data-i18n="quick_drop_main"></p>
+            <p class="text-100 text-roboflow-500 mt-100" data-i18n="quick_drop_hint"></p>
+          </div>
+          <input type="file" id="quickFile" accept="image/*" multiple class="hidden">
+        </label>
+        <div id="quickThumbs" class="hidden mt-300 flex flex-wrap gap-200"></div>
+      </div>
+
+      <!-- Text pane -->
+      <div data-pane="text" class="hidden">
+        <textarea id="quickText" rows="8" placeholder="" class="w-full bg-mochimalist border-none rounded-500 p-400 text-200 outline-none" style="box-shadow: 0 1px 2px rgba(17,17,17,0.04), inset 0 0 0 1px #E9E9E9;"></textarea>
+      </div>
+
+      <button id="quickGo" class="w-full bg-pushpin-450 text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="quick_go"></button>
+
+      <!-- Result -->
+      <div id="quickResult" class="hidden space-y-300 pt-400 border-t border-roboflow-100">
+        <div>
+          <div class="text-100 text-roboflow-500 tracking-wide uppercase font-semibold mb-100" data-i18n="quick_subject"></div>
+          <div id="quickResSubject" class="text-200 text-cosmicore font-semibold"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-300">
+          <div>
+            <div class="text-100 text-roboflow-500 tracking-wide uppercase font-semibold mb-100" data-i18n="quick_sender"></div>
+            <div id="quickResSender" class="text-200 text-cosmicore"></div>
+          </div>
+          <div>
+            <div class="text-100 text-roboflow-500 tracking-wide uppercase font-semibold mb-100" data-i18n="quick_company"></div>
+            <div id="quickResCompany" class="text-200 text-cosmicore"></div>
+          </div>
+        </div>
+        <div>
+          <div class="text-100 text-roboflow-500 tracking-wide uppercase font-semibold mb-100" data-i18n="quick_res_summary"></div>
+          <div id="quickResSummary" class="text-200 text-roboflow-700 leading-relaxed"></div>
+        </div>
+        <div>
+          <div class="text-100 text-roboflow-500 tracking-wide uppercase font-semibold mb-100" data-i18n="quick_res_actions"></div>
+          <div id="quickResActions" class="text-200 text-pushpin-700 bg-pushpin-0 rounded-300 p-300 whitespace-pre-line"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- toast + loading -->
 <div id="loading" class="hidden fixed inset-0 bg-cosmicore/30 backdrop-blur-md flex items-center justify-center z-50">
   <div class="bg-mochimalist rounded-500 p-700 shadow-lift min-w-[320px] animate-fadeUp">
@@ -231,6 +307,20 @@ const I18N = {
     open_link_outlook: '在 Outlook 中查看',
     emails_count: '{n} 封邮件',
     last_seen: '最近 {t}',
+    quick_analyze: '快速解析',
+    quick_kicker: '一次性 · 不入档',
+    quick_h: '快速解析单封邮件',
+    quick_sub: '上传截图 (Gemini 视觉) 或粘贴正文,30 秒拿到结构化摘要。结果只显示,不写入联系人档案。',
+    quick_mode_upload: '截图',
+    quick_mode_text: '粘贴文字',
+    quick_drop_main: '点击或拖拽截图到这里',
+    quick_drop_hint: 'PNG / JPG · 可多张拼一封长邮件 · 上限 40MB',
+    quick_go: '解析',
+    quick_subject: '主题',
+    quick_sender: '发件人',
+    quick_company: '公司',
+    quick_res_summary: '摘要',
+    quick_res_actions: '待跟进',
   },
   en: {
     tagline: 'Local-first · AI dossiers',
@@ -267,6 +357,20 @@ const I18N = {
     open_link_outlook: 'Open in Outlook',
     emails_count: '{n} email(s)',
     last_seen: 'last {t}',
+    quick_analyze: 'Quick analyze',
+    quick_kicker: 'One-shot · not filed',
+    quick_h: 'Quick analyze a single email',
+    quick_sub: 'Upload screenshots (Gemini vision) or paste body text, get a structured summary in ~30 sec. Results display only, nothing is written into the contact archive.',
+    quick_mode_upload: 'Screenshot',
+    quick_mode_text: 'Paste text',
+    quick_drop_main: 'Click or drop screenshots here',
+    quick_drop_hint: 'PNG / JPG · multiple shots OK · max 40 MB',
+    quick_go: 'Analyze',
+    quick_subject: 'Subject',
+    quick_sender: 'Sender',
+    quick_company: 'Company',
+    quick_res_summary: 'Summary',
+    quick_res_actions: 'Action items',
   },
 };
 const t = (k, vars = {}) => {
@@ -582,6 +686,93 @@ function wire() {
     if (!btn) return;
     if (btn.dataset.act === 'delete-contact' && state.selectedId) deleteContact(state.selectedId);
     if (btn.dataset.act === 'delete-email')   deleteEmail(+btn.dataset.id);
+  });
+
+  // ───── quick analyze modal ─────
+  const quickState = { mode: 'upload', files: [] };
+
+  const setQuickMode = (mode) => {
+    quickState.mode = mode;
+    document.querySelectorAll('[data-pane]').forEach((p) => {
+      p.classList.toggle('hidden', p.dataset.pane !== mode);
+    });
+    document.querySelectorAll('.quick-mode').forEach((b) => {
+      const on = b.dataset.mode === mode;
+      b.style.background = on ? '#111111' : 'transparent';
+      b.style.color = on ? '#FFFFFF' : '#4A4A4A';
+    });
+  };
+
+  const renderQuickThumbs = () => {
+    const wrap = $('quickThumbs');
+    if (!quickState.files.length) { wrap.classList.add('hidden'); wrap.innerHTML = ''; return; }
+    wrap.classList.remove('hidden');
+    wrap.innerHTML = quickState.files.map((f, i) => `
+      <div class="relative rounded-300 overflow-hidden shadow-floating">
+        <img src="${URL.createObjectURL(f)}" class="w-1600 h-1600 object-cover">
+        <button data-idx="${i}" data-act="rm-thumb" class="absolute top-100 right-100 w-500 h-500 rounded-pill bg-cosmicore/80 text-mochimalist text-100 font-bold">×</button>
+      </div>`).join('');
+  };
+
+  $('openQuick').addEventListener('click', () => {
+    setQuickMode('upload');
+    quickState.files = [];
+    $('quickText').value = '';
+    $('quickResult').classList.add('hidden');
+    renderQuickThumbs();
+    $('quickModal').classList.remove('hidden');
+  });
+  $('quickClose').addEventListener('click', () => $('quickModal').classList.add('hidden'));
+  $('quickModal').addEventListener('click', (e) => {
+    if (e.target.id === 'quickModal') $('quickModal').classList.add('hidden');
+  });
+
+  document.querySelectorAll('.quick-mode').forEach((b) =>
+    b.addEventListener('click', () => setQuickMode(b.dataset.mode))
+  );
+
+  $('quickFile').addEventListener('change', (e) => {
+    const list = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
+    quickState.files = quickState.files.concat(list).slice(0, 8);
+    renderQuickThumbs();
+  });
+  $('quickThumbs').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act="rm-thumb"]');
+    if (!btn) return;
+    quickState.files.splice(+btn.dataset.idx, 1);
+    renderQuickThumbs();
+  });
+
+  $('quickGo').addEventListener('click', async () => {
+    const text = $('quickText').value.trim();
+    if (quickState.mode === 'upload' && !quickState.files.length) {
+      showToast(state.lang === 'zh' ? '先放一张截图' : 'Add a screenshot first', 'error');
+      return;
+    }
+    if (quickState.mode === 'text' && !text) {
+      showToast(state.lang === 'zh' ? '先粘贴一段邮件正文' : 'Paste some email text first', 'error');
+      return;
+    }
+    showLoading(state.lang === 'zh' ? '正在解析...' : 'Analyzing...');
+    try {
+      const fd = new FormData();
+      fd.append('lang', state.lang);
+      if (quickState.mode === 'text') fd.append('text', text);
+      else for (const f of quickState.files) fd.append('files', f);
+      const r = await fetch('/api/analyze', { method: 'POST', body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || r.statusText);
+      $('quickResSubject').textContent = data.subject || '—';
+      $('quickResSender').textContent = data.sender || '—';
+      $('quickResCompany').textContent = data.company || '—';
+      $('quickResSummary').textContent = data.summary || '—';
+      $('quickResActions').textContent = data.action_items || '—';
+      $('quickResult').classList.remove('hidden');
+    } catch (e) {
+      showToast(e.message || String(e), 'error');
+    } finally {
+      hideLoading();
+    }
   });
 
   // banner from OAuth callback

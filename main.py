@@ -32,7 +32,8 @@ import inbox_gmail
 import inbox_outlook
 import oauth_providers as oauth
 from crypto_util import decrypt, encrypt
-from gemini_service import analyze_email, analyze_with_context
+from deepseek_service import analyze_with_context
+from vision_service import analyze_email
 
 load_dotenv()
 
@@ -78,11 +79,12 @@ async def root():
 @app.get("/api/health")
 async def health():
     return {
-        "gemini_key_set": bool(os.getenv("GEMINI_API_KEY")),
+        "deepseek_key_set": bool(os.getenv("DEEPSEEK_API_KEY")),
+        "vision_key_set": bool(os.getenv("VISION_API_KEY")),
         "google_oauth_set": bool(os.getenv("GOOGLE_CLIENT_ID") and os.getenv("GOOGLE_CLIENT_SECRET")),
         "microsoft_oauth_set": bool(os.getenv("MICROSOFT_CLIENT_ID") and os.getenv("MICROSOFT_CLIENT_SECRET")),
         "token_enc_key_set": bool(os.getenv("TOKEN_ENC_KEY")),
-        "db_path": str(Path.home() / ".inbox-forge" / "data.db") if not os.getenv("DB_PATH") else os.getenv("DB_PATH"),
+        "turso_set": bool(os.getenv("TURSO_DATABASE_URL")),
     }
 
 

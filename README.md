@@ -7,7 +7,7 @@ Local-first AI email assistant. Connect Gmail or Outlook, and Gemini builds a ro
 
 ## One-click deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/email-summarizer&env=GEMINI_API_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APP_BASE_URL,TOKEN_ENC_KEY,TURSO_DATABASE_URL,TURSO_AUTH_TOKEN)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/email-summarizer&env=DEEPSEEK_API_KEY,VISION_API_KEY,VISION_BASE_URL,VISION_MODEL,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APP_BASE_URL,TOKEN_ENC_KEY,TURSO_DATABASE_URL,TURSO_AUTH_TOKEN)
 
 > Replace `YOUR_USERNAME` with your GitHub username after forking. Each fork = one personal instance.
 
@@ -15,10 +15,11 @@ Local-first AI email assistant. Connect Gmail or Outlook, and Gemini builds a ro
 
 | # | What | Where | How long |
 |---|---|---|---|
-| 1 | `GEMINI_API_KEY` | https://aistudio.google.com/apikey → Create API key | 1 min |
-| 2 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | https://console.cloud.google.com → APIs & Services → Credentials → Create OAuth client ID (Web app). Add `https://YOUR-PROJECT.vercel.app/api/auth/google/callback` as Authorized redirect URI. Also enable the Gmail API. | 5 min |
-| 3 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | https://turso.tech → sign up with GitHub → `turso db create inbox-forge` → `turso db show inbox-forge --url` and `turso db tokens create inbox-forge` | 2 min |
-| 4 | `TOKEN_ENC_KEY` | Local shell: `openssl rand -base64 32` (signs OAuth state + encrypts stored tokens) | 10 sec |
+| 1 | `DEEPSEEK_API_KEY` | https://platform.deepseek.com → API keys. Drives the main dossier pipeline (default model `deepseek-v4-flash`). Top up ~$5, lasts months. | 2 min |
+| 2 | `VISION_API_KEY` | https://bailian.console.aliyun.com → API-Key 管理. Drives the Quick Analyze screenshot path via Qwen3-VL-Plus (default). New users get 1M free tokens. | 2 min |
+| 3 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | https://console.cloud.google.com → APIs & Services → Credentials → Create OAuth client ID (Web app). Add `https://YOUR-PROJECT.vercel.app/api/auth/google/callback` as Authorized redirect URI. Also enable the Gmail API. | 5 min |
+| 4 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | https://turso.tech → sign up with GitHub → `turso db create inbox-forge` → `turso db show inbox-forge --url` and `turso db tokens create inbox-forge` | 2 min |
+| 5 | `TOKEN_ENC_KEY` | Local shell: `openssl rand -base64 32` (signs OAuth state + encrypts stored tokens) | 10 sec |
 
 Optional, only if you want Outlook too:
 
@@ -59,7 +60,10 @@ The dossier rolls forward every email, so context accumulates without unbounded 
 
 | Var | Required | Notes |
 |---|---|---|
-| `GEMINI_API_KEY` | yes | Gemini 2.5 Flash |
+| `DEEPSEEK_API_KEY` | yes | DeepSeek-V4-Flash drives the dossier pipeline (`/api/inbox/{id}/sweep`) |
+| `VISION_API_KEY` | yes | Qwen3-VL-Plus on DashScope drives the Quick Analyze screenshot path (`/api/analyze`). OpenAI-compatible; swap providers by changing `VISION_BASE_URL` + `VISION_MODEL`. |
+| `VISION_BASE_URL` | yes | Default `https://dashscope.aliyuncs.com/compatible-mode/v1` |
+| `VISION_MODEL` | yes | Default `qwen3-vl-plus` |
 | `APP_BASE_URL` | yes | `https://YOUR.vercel.app` (no trailing slash) or `http://127.0.0.1:8000` locally |
 | `GOOGLE_CLIENT_ID` | yes for Gmail | Authorized redirect URI in the OAuth console: `<APP_BASE_URL>/api/auth/google/callback` |
 | `GOOGLE_CLIENT_SECRET` | yes for Gmail | |
