@@ -108,9 +108,9 @@ async def me():
 # ---------- OAuth: Google ----------
 
 @app.get("/api/auth/google/start")
-async def google_start():
+async def google_start(switch: int = 0):
     state = _make_state()
-    return RedirectResponse(oauth.google_auth_url(state), status_code=302)
+    return RedirectResponse(oauth.google_auth_url(state, force_account_picker=bool(switch)), status_code=302)
 
 
 @app.get("/api/auth/google/callback")
@@ -143,9 +143,9 @@ async def google_callback(code: Optional[str] = None, state: Optional[str] = Non
 # ---------- OAuth: Microsoft ----------
 
 @app.get("/api/auth/microsoft/start")
-async def microsoft_start():
+async def microsoft_start(switch: int = 0):
     state = _make_state()
-    return RedirectResponse(oauth.microsoft_auth_url(state), status_code=302)
+    return RedirectResponse(oauth.microsoft_auth_url(state, force_account_picker=bool(switch)), status_code=302)
 
 
 @app.get("/api/auth/microsoft/callback")

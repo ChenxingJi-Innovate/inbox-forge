@@ -393,6 +393,9 @@ const I18N = {
     failed_n: ', {n} 封失败',
     disconnect: '断开',
     disconnect_confirm: '确定要断开这个邮箱吗? 不会影响已归档的联系人档案。',
+    switch_account: '切换账号',
+    sign_out: '退出',
+    sign_out_tip: '断开这个邮箱 (已归档的联系人档案保留)',
     delete_contact: '删除联系人',
     delete_contact_confirm: '确定删除这位联系人? 他的所有历史邮件与档案都会一并删除,不可恢复。',
     delete_email: '删除这封',
@@ -466,6 +469,9 @@ const I18N = {
     failed_n: ', {n} failed',
     disconnect: 'Disconnect',
     disconnect_confirm: 'Disconnect this inbox? Your existing contact dossiers stay intact.',
+    switch_account: 'Switch account',
+    sign_out: 'Sign out',
+    sign_out_tip: 'Disconnect this inbox (archived contact dossiers stay)',
     delete_contact: 'Delete contact',
     delete_contact_confirm: 'Delete this contact? All their emails and dossier go with them. Cannot be undone.',
     delete_email: 'Delete',
@@ -621,7 +627,12 @@ function renderConnBar() {
       <div class="flex items-center gap-200 bg-mochimalist rounded-pill px-400 py-200 shadow-floating text-100">
         ${dot}
         <span class="font-semibold text-cosmicore">${escapeHtml(c.provider_email)}</span>
-        <button data-act="disconnect" data-id="${c.id}" class="px-200 text-roboflow-500 hover:text-pushpin-450 transition-colors" title="${escapeHtml(t('disconnect'))}">×</button>
+        <span class="w-px h-300 bg-roboflow-200 mx-100"></span>
+        <button data-act="switch" data-provider="${c.provider}" class="px-200 text-roboflow-600 hover:text-cosmicore transition-colors font-semibold">${escapeHtml(t('switch_account'))}</button>
+        <button data-act="disconnect" data-id="${c.id}" class="px-200 text-roboflow-500 hover:text-pushpin-450 transition-colors font-semibold flex items-center gap-100" title="${escapeHtml(t('sign_out_tip'))}">
+          <span>${escapeHtml(t('sign_out'))}</span>
+          <span aria-hidden="true">×</span>
+        </button>
       </div>`;
   }).join('');
   bar.innerHTML = chips;
@@ -1013,8 +1024,14 @@ function wire() {
   $('connBar').addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-act]');
     if (!btn) return;
-    const id = +btn.dataset.id;
-    if (btn.dataset.act === 'disconnect') disconnect(id);
+    if (btn.dataset.act === 'disconnect') {
+      disconnect(+btn.dataset.id);
+    } else if (btn.dataset.act === 'switch') {
+      // Force Google's account picker (prompt=select_account) so the user
+      // can pick a different identity even if google.com still has a session.
+      const p = btn.dataset.provider === 'microsoft' ? 'microsoft' : 'google';
+      window.location.href = `/api/auth/${p}/start?switch=1`;
+    }
   });
 
   $('syncGo').addEventListener('click', sweepAll);

@@ -37,17 +37,27 @@ GOOGLE_SCOPES = " ".join([
 ])
 
 
-def google_auth_url(state: str) -> str:
+def google_auth_url(state: str, *, force_account_picker: bool = False) -> str:
+    """Build the Google OAuth consent URL.
+
+    When `force_account_picker` is True we send `prompt=select_account consent`
+    so Google shows its account chooser regardless of any browser-cached
+    session. This is how the UI's "switch account" action lets the user pick
+    a different Google identity without first signing out of google.com.
+    """
     cid = os.getenv("GOOGLE_CLIENT_ID")
     if not cid:
         raise RuntimeError("GOOGLE_CLIENT_ID not set")
+    # Always need `consent` to force refresh_token issuance on first connect.
+    # Adding `select_account` in the same value works per Google's docs (space-separated).
+    prompt = "select_account consent" if force_account_picker else "consent"
     params = {
         "client_id": cid,
         "redirect_uri": f"{_base_url()}/api/auth/google/callback",
         "response_type": "code",
         "scope": GOOGLE_SCOPES,
         "access_type": "offline",
-        "prompt": "consent",          # force refresh_token issuance
+        "prompt": prompt,
         "include_granted_scopes": "true",
         "state": state,
     }
@@ -115,7 +125,10 @@ MS_SCOPES = " ".join([
 ])
 
 
-def microsoft_auth_url(state: str) -> str:
+def microsoft_auth_url(state: str, *, force_account_picker: bool = False) -> str:
+    """Microsoft already defaults to select_account on every request, so the
+    `force_account_picker` flag is accepted for API symmetry with Google but
+    is effectively a no-op here."""
     cid = os.getenv("MICROSOFT_CLIENT_ID")
     if not cid:
         raise RuntimeError("MICROSOFT_CLIENT_ID not set")
