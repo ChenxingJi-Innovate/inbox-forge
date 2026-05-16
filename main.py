@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import (
     Cookie, Depends, FastAPI, File, Form, HTTPException, Query,
@@ -59,6 +60,17 @@ _session_signer = URLSafeTimedSerializer(
     os.getenv("TOKEN_ENC_KEY") or "dev-fallback-key-please-set-TOKEN_ENC_KEY",
     salt="session",
 )
+
+# Magic-link sign-in: stateless signed token carrying the email, 15-min TTL.
+MAGIC_LINK_TTL = 900
+_magic_signer = URLSafeTimedSerializer(
+    os.getenv("TOKEN_ENC_KEY") or "dev-fallback-key-please-set-TOKEN_ENC_KEY",
+    salt="magic-link",
+)
+
+
+def _is_https_deploy() -> bool:
+    return os.getenv("APP_BASE_URL", "").lower().startswith("https://")
 
 
 def _norm_lang(lang: Optional[str]) -> str:
@@ -146,16 +158,22 @@ async def me(request: Request):
     frontend renders the hero/empty state rather than a 401."""
     uid = current_user_id(request)
     if uid is None:
-        return {"connections": [], "stats": {"contacts": 0, "connections": 0}, "signed_in": False}
+        return {"connections": [], "stats": {"contacts": 0, "connections": 0}, "signed_in": False, "primary_email": None}
     conns = db.list_oauth_connections(uid)
     contacts = db.list_contacts(uid)
+    user = db.get_user(uid)
     return {
         "connections": [
             {"id": c["id"], "provider": c["provider"], "provider_email": c["provider_email"]}
             for c in conns
         ],
-        "stats": {"contacts": len(contacts), "connections": len(conns)},
+        "stats": {
+            "contacts": len(contacts),
+            "connections": len(conns),
+            "manual_entries": len(db.list_manual_entries(uid, limit=1000)),
+        },
         "signed_in": True,
+        "primary_email": (user or {}).get("primary_email"),
     }
 
 
@@ -240,6 +258,73 @@ async def microsoft_callback(request: Request, code: Optional[str] = None, state
     )
     response = RedirectResponse("/?connected=microsoft", status_code=302)
     _issue_session(response, uid)
+    return response
+
+
+# ─── Magic-link sign-in (lightweight identity) ───────────────────────────
+
+class MagicLinkRequest(BaseModel):
+    email: str
+
+
+def _build_magic_link(token: str) -> str:
+    base = os.getenv("APP_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+    return f"{base}/api/auth/magic-link/verify?token={token}"
+
+
+def _send_magic_link_email(email: str, link: str) -> None:
+    """Send a sign-in link via Resend (https://resend.com). Raises on failure
+    so the caller can fall back to dev mode."""
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        raise RuntimeError("RESEND_API_KEY not set")
+    from_addr = os.getenv("RESEND_FROM", "Inbox Forge <onboarding@resend.dev>")
+    html = (
+        "<!doctype html><html><body style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;line-height:1.6;color:#111;max-width:520px;margin:0 auto;padding:32px'>"
+        "<p style='font-size:18px;font-weight:600;margin:0 0 8px'>Sign in to Inbox Forge</p>"
+        "<p style='color:#4A4A4A;margin:0 0 24px'>Click the button below to sign in. The link expires in 15 minutes.</p>"
+        f"<p><a href='{link}' style='display:inline-block;padding:14px 28px;background:#E60023;color:#fff;border-radius:999px;text-decoration:none;font-weight:600'>Sign in</a></p>"
+        "<p style='color:#A5A5A5;font-size:13px;margin-top:32px'>If you didn't request this, ignore the email.</p>"
+        "</body></html>"
+    )
+    with httpx.Client(timeout=10) as c:
+        r = c.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"from": from_addr, "to": [email], "subject": "Sign in to Inbox Forge", "html": html},
+        )
+        r.raise_for_status()
+
+
+@app.post("/api/auth/magic-link/request")
+async def magic_link_request(body: MagicLinkRequest):
+    email = (body.email or "").strip().lower()
+    if "@" not in email or len(email) > 200:
+        raise HTTPException(status_code=400, detail="Invalid email")
+    token = _magic_signer.dumps(email)
+    link = _build_magic_link(token)
+    try:
+        _send_magic_link_email(email, link)
+        return {"success": True, "sent": True}
+    except Exception as e:
+        # Production (https deploy) requires real email. Dev / local can show
+        # the link directly so the user can keep iterating without setting
+        # up Resend.
+        if _is_https_deploy():
+            raise HTTPException(status_code=503, detail=f"Email service not configured ({type(e).__name__}). Set RESEND_API_KEY.")
+        return {"success": True, "sent": False, "link": link}
+
+
+@app.get("/api/auth/magic-link/verify")
+async def magic_link_verify(token: str):
+    try:
+        email = _magic_signer.loads(token, max_age=MAGIC_LINK_TTL)
+    except (BadSignature, SignatureExpired):
+        return RedirectResponse("/?magic_error=expired_or_invalid", status_code=302)
+
+    user = db.find_user_by_email(email) or db.create_user(primary_email=email)
+    response = RedirectResponse("/?magic_ok=1", status_code=302)
+    _issue_session(response, user["id"])
     return response
 
 
@@ -534,6 +619,49 @@ async def remove_contact(contact_id: int, user_id: int = Depends(require_user_id
 @app.delete("/api/contact-emails/{email_id}")
 async def remove_contact_email(email_id: int, user_id: int = Depends(require_user_id)):
     db.delete_contact_email(user_id, email_id)
+    return {"success": True}
+
+
+# ─── Manual archive (Quick Analyze persisted results) ────────────────────
+
+class ManualEntryIn(BaseModel):
+    sender: str = ""
+    company: str = ""
+    subject: str = ""
+    summary: str = ""
+    action_items: str = ""
+    label: Optional[str] = None
+    source_kind: str = "manual"
+
+
+@app.post("/api/manual-entries")
+async def save_manual_entry(body: ManualEntryIn, user_id: int = Depends(require_user_id)):
+    if not (body.summary or body.subject or body.action_items):
+        raise HTTPException(status_code=400, detail="Nothing to save")
+    row = db.add_manual_entry(
+        user_id=user_id,
+        label=body.label,
+        sender=body.sender or "",
+        company=body.company or "",
+        subject=body.subject or "",
+        summary=body.summary or "",
+        action_items=body.action_items or "",
+        source_kind=body.source_kind or "manual",
+    )
+    return {"success": True, "entry": row}
+
+
+@app.get("/api/manual-entries")
+async def list_manual_entries(request: Request):
+    uid = current_user_id(request)
+    if uid is None:
+        return {"entries": []}
+    return {"entries": db.list_manual_entries(uid)}
+
+
+@app.delete("/api/manual-entries/{entry_id}")
+async def delete_manual_entry(entry_id: int, user_id: int = Depends(require_user_id)):
+    db.delete_manual_entry(user_id, entry_id)
     return {"success": True}
 
 

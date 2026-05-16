@@ -83,6 +83,24 @@ CREATE TABLE IF NOT EXISTS contact_dossier (
     relationship_stage TEXT,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Manual archive: Quick Analyze results the user explicitly chose to save.
+-- Lives outside the contact_emails graph because it has no provider/message_id
+-- and no inherent contact identity (user might paste anonymous text).
+CREATE TABLE IF NOT EXISTS manual_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label TEXT,
+    sender TEXT,
+    company TEXT,
+    subject TEXT,
+    summary TEXT,
+    action_items TEXT,
+    source_kind TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS manual_entries_user ON manual_entries(user_id, created_at DESC);
 """
 
 
@@ -155,18 +173,18 @@ def _split_schema(sql: str) -> list[str]:
 
 
 def _migrate_if_old_schema() -> None:
-    """One-shot migration: drop legacy v1 tables so the new v2 schema can be
-    created cleanly. v1 had no user_id column. We detect that and wipe.
-
-    Safe because at this point both the local installs and the Vercel demo
-    only had testing data. Future migrations should be additive, not
-    destructive."""
+    """Idempotent migration:
+    - If v1 schema is detected (oauth_connections without user_id) drop all
+      legacy tables so the v2 schema can be created fresh.
+    - If v2 is in place but manual_entries doesn't yet exist (added later)
+      it'll get created by the normal CREATE TABLE IF NOT EXISTS pass.
+    """
     if _USE_TURSO:
         try:
             _turso().execute("SELECT user_id FROM oauth_connections LIMIT 1")
-            return  # already v2
+            return  # already v2+
         except Exception:
-            for tbl in ["contact_dossier", "contact_emails", "contacts", "oauth_connections", "users"]:
+            for tbl in ["manual_entries", "contact_dossier", "contact_emails", "contacts", "oauth_connections", "users"]:
                 try:
                     _turso().execute(f"DROP TABLE IF EXISTS {tbl}")
                 except Exception:
@@ -175,10 +193,10 @@ def _migrate_if_old_schema() -> None:
         with sqlite3.connect(_local_path()) as conn:
             try:
                 conn.execute("SELECT user_id FROM oauth_connections LIMIT 1")
-                return  # already v2
+                return  # already v2+
             except sqlite3.OperationalError:
                 pass
-            for tbl in ["contact_dossier", "contact_emails", "contacts", "oauth_connections", "users"]:
+            for tbl in ["manual_entries", "contact_dossier", "contact_emails", "contacts", "oauth_connections", "users"]:
                 try:
                     conn.execute(f"DROP TABLE IF EXISTS {tbl}")
                 except sqlite3.OperationalError:
@@ -256,6 +274,67 @@ def find_user_id_by_oauth_email(provider: str, provider_email: str) -> Optional[
         )
         row = _row(cur.fetchone())
         return row["user_id"] if row else None
+
+
+def find_user_by_email(email: str) -> Optional[dict]:
+    """For magic-link sign-in: try to unify against either users.primary_email
+    or any oauth_connections.provider_email. This way a user who originally
+    signed up with OAuth (Gmail X) and then later magic-links with that same
+    address lands back in their existing account, not a second one."""
+    e = email.lower().strip()
+    with cursor() as cur:
+        cur.execute(
+            """SELECT u.* FROM users u
+               WHERE LOWER(u.primary_email) = ?
+                  OR u.id IN (SELECT user_id FROM oauth_connections WHERE LOWER(provider_email) = ?)
+               LIMIT 1""",
+            (e, e),
+        )
+        return _row(cur.fetchone())
+
+
+# ─── manual entries (Quick Analyze archive) ──────────────────────────────
+
+def add_manual_entry(
+    user_id: int,
+    label: Optional[str],
+    sender: str,
+    company: str,
+    subject: str,
+    summary: str,
+    action_items: str,
+    source_kind: str = "manual",
+) -> dict:
+    with cursor() as cur:
+        cur.execute(
+            """INSERT INTO manual_entries
+                  (user_id, label, sender, company, subject, summary, action_items, source_kind)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, label, sender, company, subject, summary, action_items, source_kind),
+        )
+        new_id = cur.lastrowid
+        cur.execute("SELECT * FROM manual_entries WHERE id = ?", (new_id,))
+        return _row(cur.fetchone())
+
+
+def list_manual_entries(user_id: int, limit: int = 200) -> list[dict]:
+    with cursor() as cur:
+        cur.execute(
+            """SELECT * FROM manual_entries
+               WHERE user_id = ?
+               ORDER BY created_at DESC
+               LIMIT ?""",
+            (user_id, limit),
+        )
+        return [_row(r) for r in cur.fetchall()]
+
+
+def delete_manual_entry(user_id: int, entry_id: int) -> None:
+    with cursor() as cur:
+        cur.execute(
+            "DELETE FROM manual_entries WHERE id = ? AND user_id = ?",
+            (entry_id, user_id),
+        )
 
 
 # ─── oauth connections ───────────────────────────────────────────────────

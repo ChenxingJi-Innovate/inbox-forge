@@ -105,6 +105,12 @@
         <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="zh">中</button>
         <button class="lang-btn px-300 py-100 rounded-pill font-semibold transition-all duration-500 ease-apple" data-lang="en">EN</button>
       </div>
+      <div id="identityBox" class="hidden flex items-center gap-200 px-300 py-200 rounded-pill bg-roboflow-50">
+        <span class="w-200 h-200 rounded-pill bg-pushpin-450"></span>
+        <span id="identityEmail" class="text-cosmicore font-semibold text-100"></span>
+        <button id="signOutBtn" class="text-roboflow-500 hover:text-pushpin-450 transition-colors font-bold text-200" title="Sign out">×</button>
+      </div>
+      <button id="signInBtn" class="px-400 py-200 rounded-pill bg-mochimalist text-roboflow-700 font-semibold shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="signin_label"></button>
       <button id="openQuick" class="px-400 py-200 rounded-pill bg-cosmicore text-mochimalist font-semibold hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple" data-i18n="quick_analyze"></button>
       <button id="connectGoogle" class="px-400 py-200 rounded-pill bg-mochimalist text-roboflow-700 font-semibold shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple flex items-center gap-200">
         <svg class="w-400 h-400" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
@@ -248,6 +254,18 @@
       </div>
 
       <div id="detail" class="hidden space-y-500"></div>
+
+      <!-- Manual archive: Quick Analyze entries the user explicitly saved -->
+      <div id="manualArchive" class="bg-mochimalist rounded-600 shadow-floating p-700">
+        <div class="flex items-baseline justify-between mb-400">
+          <div>
+            <div class="text-100 text-roboflow-500 tracking-widest uppercase font-semibold" data-i18n="manual_archive_h"></div>
+            <div id="manualCount" class="text-300 font-semibold text-cosmicore mt-100"></div>
+          </div>
+        </div>
+        <div id="manualList" class="space-y-300"></div>
+        <p id="manualEmpty" class="hidden text-100 text-roboflow-400 leading-relaxed" data-i18n="manual_archive_empty"></p>
+      </div>
     </section>
   </div>
 </div>
@@ -322,6 +340,49 @@
           <div class="text-100 text-roboflow-500 tracking-wide uppercase font-semibold mb-100" data-i18n="quick_res_actions"></div>
           <div id="quickResActions" class="text-200 text-pushpin-700 bg-pushpin-0 rounded-300 p-300 whitespace-pre-line"></div>
         </div>
+        <button id="quickSave" class="w-full mt-300 bg-cosmicore text-mochimalist py-300 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating flex items-center justify-center gap-200">
+          <svg class="w-400 h-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
+          <span data-i18n="quick_save"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ──────────── SIGN-IN MODAL (magic link) ──────────── -->
+<div id="signInModal" class="hidden fixed inset-0 bg-cosmicore/40 backdrop-blur-md z-40 flex items-start justify-center overflow-y-auto p-600">
+  <div class="bg-mochimalist rounded-600 shadow-lift w-full max-w-md my-1200 animate-fadeUp">
+    <div class="flex items-center justify-between p-600 border-b border-roboflow-100">
+      <div>
+        <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold" data-i18n="signin_kicker"></div>
+        <h2 class="text-400 font-bold text-cosmicore mt-100" data-i18n="signin_h"></h2>
+      </div>
+      <button id="signInClose" class="text-400 text-roboflow-500 hover:text-pushpin-450 transition-colors w-800 h-800 rounded-pill hover:bg-roboflow-50">×</button>
+    </div>
+    <div class="p-600 space-y-500">
+      <p class="text-100 text-roboflow-500 leading-relaxed" data-i18n="signin_sub"></p>
+      <div>
+        <label class="block text-100 text-roboflow-500 font-semibold mb-200" data-i18n="signin_email_label"></label>
+        <input id="signInEmail" type="email" placeholder="" class="w-full bg-roboflow-50 border-0 rounded-300 px-300 py-300 text-200 text-cosmicore" style="box-shadow: inset 0 0 0 1px #E9E9E9;">
+      </div>
+      <button id="signInGo" class="w-full bg-pushpin-450 text-mochimalist py-400 rounded-pill font-semibold text-200 hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple shadow-floating" data-i18n="signin_go"></button>
+
+      <div id="signInResult" class="hidden p-400 rounded-300 bg-roboflow-50 text-200 text-roboflow-700"></div>
+
+      <div class="flex items-center gap-400 text-100 text-roboflow-400">
+        <span class="h-px flex-1 bg-roboflow-200"></span>
+        <span data-i18n="signin_or_oauth"></span>
+        <span class="h-px flex-1 bg-roboflow-200"></span>
+      </div>
+      <div class="grid grid-cols-2 gap-300">
+        <button class="hero-google inline-flex items-center justify-center gap-200 bg-mochimalist py-300 rounded-pill font-semibold text-100 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple">
+          <svg class="w-400 h-400" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
+          <span data-i18n="connect_gmail"></span>
+        </button>
+        <button class="hero-microsoft inline-flex items-center justify-center gap-200 bg-mochimalist py-300 rounded-pill font-semibold text-100 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple">
+          <svg class="w-400 h-400" viewBox="0 0 23 23"><path fill="#F25022" d="M1 1h10v10H1z"/><path fill="#7FBA00" d="M12 1h10v10H12z"/><path fill="#00A4EF" d="M1 12h10v10H12z"/><path fill="#FFB900" d="M12 12h10v10H12z"/></svg>
+          <span data-i18n="connect_outlook"></span>
+        </button>
       </div>
     </div>
   </div>
@@ -351,6 +412,10 @@ const state = {
   detailCache: {},
   sort: (localStorage.getItem('sort') || 'recent'),  // 'recent' | 'name' | 'company'
   search: '',
+  signedIn: false,
+  primaryEmail: null,
+  manualEntries: [],
+  pendingQuickResult: null,  // last Quick Analyze result, used by Save flow
 };
 
 // Stage canonicalization. The LLM picks the value in whatever language the
@@ -464,7 +529,22 @@ const I18N = {
     quick_company: '公司',
     quick_res_summary: '摘要',
     quick_res_actions: '待跟进',
-  },
+    quick_save: '保存到手动归档',
+    signin_label: '登录',
+    signin_kicker: '轻量身份',
+    signin_h: '登录以保存解析结果',
+    signin_sub: '输入邮箱,我们发一个登录链接到你邮箱 (15 分钟内有效)。也可以直接连接 Gmail / Outlook 完成登录。',
+    signin_email_label: '邮箱',
+    signin_go: '发送登录链接',
+    signin_or_oauth: '或',
+    signin_sent: '链接已发送到 {email}。查收邮件后点击其中的「Sign in」按钮即可登录,本页可关闭。',
+    signin_dev_link: '邮件服务未配置 (本地 dev 模式)。点 [此处] 直接登录: {link}',
+    signin_required: '保存需要先登录',
+    saved_to_archive: '已保存到手动归档',
+    manual_archive_h: '手动归档',
+    manual_archive_empty: '尚未保存任何解析结果。在「快速解析」里完成一次解析后,点击「保存到手动归档」即可入档。',
+    delete_manual: '删除',
+    delete_manual_confirm: '从手动归档中删除这条?',
   en: {
     tagline: 'Local-first · AI dossiers',
     connect_gmail: 'Connect Gmail',
@@ -542,6 +622,22 @@ const I18N = {
     quick_company: 'Company',
     quick_res_summary: 'Summary',
     quick_res_actions: 'Action items',
+    quick_save: 'Save to manual archive',
+    signin_label: 'Sign in',
+    signin_kicker: 'Lightweight identity',
+    signin_h: 'Sign in to save analyses',
+    signin_sub: 'Enter your email; a sign-in link will be sent there (valid for 15 min). You can also sign in by connecting Gmail or Outlook directly.',
+    signin_email_label: 'Email',
+    signin_go: 'Send sign-in link',
+    signin_or_oauth: 'or',
+    signin_sent: 'Link sent to {email}. Click the "Sign in" button in your inbox. You can close this tab.',
+    signin_dev_link: 'Email service not configured (local dev mode). Click [here] to sign in: {link}',
+    signin_required: 'Sign in to save',
+    saved_to_archive: 'Saved to manual archive',
+    manual_archive_h: 'Manual archive',
+    manual_archive_empty: 'No saved analyses yet. After running Quick Analyze, click "Save to manual archive" on the result to file it here.',
+    delete_manual: 'Delete',
+    delete_manual_confirm: 'Remove this from the manual archive?',
   },
 };
 const t = (k, vars = {}) => {
@@ -606,16 +702,22 @@ async function api(method, path, body) {
 
 // ───────── data load + render ─────────
 async function refreshAll() {
-  const [me, contactsResp] = await Promise.all([
+  const [me, contactsResp, manualResp] = await Promise.all([
     api('GET', '/api/me'),
     api('GET', '/api/contacts'),
+    api('GET', '/api/manual-entries'),
   ]);
   state.connections = me.connections;
   state.contacts = contactsResp.contacts;
+  state.manualEntries = manualResp.entries || [];
+  state.signedIn = !!me.signed_in;
+  state.primaryEmail = me.primary_email || null;
   renderShell();
+  renderIdentity();
   renderConnBar();
   renderSyncPanel();
   renderContactList();
+  renderManualArchive();
   if (state.selectedId && !state.contacts.find((c) => c.id === state.selectedId)) {
     state.selectedId = null;
     delete state.detailCache[state.selectedId];
@@ -623,10 +725,20 @@ async function refreshAll() {
   if (state.selectedId) await openContact(state.selectedId, { force: true });
 }
 
+function renderIdentity() {
+  const signedIn = state.signedIn;
+  $('identityBox').classList.toggle('hidden', !signedIn);
+  $('signInBtn').classList.toggle('hidden', signedIn);
+  if (signedIn && state.primaryEmail) {
+    $('identityEmail').textContent = state.primaryEmail;
+  }
+}
+
 function renderShell() {
   const anyConn = state.connections.length > 0;
   const anyContact = state.contacts.length > 0;
-  const showMain = anyConn || anyContact;
+  const anyManual = state.manualEntries.length > 0;
+  const showMain = state.signedIn || anyConn || anyContact || anyManual;
   $('emptyState').classList.toggle('hidden', showMain);
   $('mainView').classList.toggle('hidden', !showMain);
   $('connectGoogle').style.display = anyConn ? '' : 'none';
@@ -1017,6 +1129,123 @@ async function deleteEmail(id) {
   } catch (e) { showToast(e.message || String(e), 'error'); }
 }
 
+// ───────── manual archive ─────────
+function renderManualArchive() {
+  const wrap = $('manualList');
+  const empty = $('manualEmpty');
+  const count = $('manualCount');
+  count.textContent = state.lang === 'zh'
+    ? `${state.manualEntries.length} 条`
+    : `${state.manualEntries.length} entr${state.manualEntries.length === 1 ? 'y' : 'ies'}`;
+  if (!state.manualEntries.length) {
+    wrap.innerHTML = '';
+    empty.classList.remove('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  wrap.innerHTML = state.manualEntries.map((e) => {
+    const when = e.created_at ? new Date(e.created_at).toLocaleString(state.lang === 'zh' ? 'zh-CN' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+    return `
+      <div class="rounded-400 bg-roboflow-50 p-400">
+        <div class="flex items-baseline justify-between gap-300 mb-200">
+          <div class="text-200 font-semibold text-cosmicore truncate">${escapeHtml(e.subject || '(no subject)')}</div>
+          <button data-act="del-manual" data-id="${e.id}" class="text-100 text-roboflow-400 hover:text-pushpin-450 transition-colors whitespace-nowrap">${escapeHtml(t('delete_manual'))}</button>
+        </div>
+        <div class="text-100 text-roboflow-500 mb-200">
+          ${escapeHtml(e.sender || '')}${e.company ? ' · ' + escapeHtml(e.company) : ''} · <span class="font-mono">${escapeHtml(when)}</span>
+        </div>
+        <div class="text-200 text-roboflow-700 leading-relaxed">${escapeHtml(e.summary || '')}</div>
+        ${(e.action_items && e.action_items.trim() && e.action_items.trim() !== '无' && e.action_items.trim().toLowerCase() !== 'none')
+          ? `<div class="text-100 text-pushpin-700 mt-300 whitespace-pre-line bg-pushpin-0 rounded-300 p-300">${escapeHtml(e.action_items)}</div>`
+          : ''}
+      </div>`;
+  }).join('');
+}
+
+async function deleteManual(id) {
+  if (!confirm(t('delete_manual_confirm'))) return;
+  try {
+    await api('DELETE', `/api/manual-entries/${id}`);
+    await refreshAll();
+  } catch (e) { showToast(e.message || String(e), 'error'); }
+}
+
+// ───────── sign-in modal (magic link) ─────────
+const openSignInModal = () => {
+  $('signInResult').classList.add('hidden');
+  $('signInResult').innerHTML = '';
+  $('signInEmail').value = '';
+  $('signInModal').classList.remove('hidden');
+  $('signInEmail').placeholder = state.lang === 'zh' ? 'you@example.com' : 'you@example.com';
+};
+const closeSignInModal = () => $('signInModal').classList.add('hidden');
+
+async function signOut() {
+  try {
+    await api('POST', '/api/logout', {});
+  } catch (e) { /* ignore */ }
+  state.detailCache = {};
+  state.selectedId = null;
+  await refreshAll();
+}
+
+async function requestMagicLink() {
+  const email = ($('signInEmail').value || '').trim();
+  if (!email || email.indexOf('@') < 0) {
+    showToast(state.lang === 'zh' ? '请输入有效邮箱' : 'Enter a valid email', 'error');
+    return;
+  }
+  showLoading(state.lang === 'zh' ? '发送中...' : 'Sending...');
+  try {
+    const r = await api('POST', '/api/auth/magic-link/request', { email });
+    const box = $('signInResult');
+    box.classList.remove('hidden');
+    if (r.sent) {
+      box.innerHTML = escapeHtml(t('signin_sent', { email }));
+    } else if (r.link) {
+      const msg = t('signin_dev_link', { link: r.link });
+      box.innerHTML = msg.replace('[此处]', `<a class="text-pushpin-450 font-semibold underline" href="${r.link}">${state.lang === 'zh' ? '此处' : 'here'}</a>`)
+                         .replace('[here]', `<a class="text-pushpin-450 font-semibold underline" href="${r.link}">here</a>`)
+                         .replace(r.link, '');
+    }
+  } catch (e) {
+    showToast(e.message || String(e), 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+// ───────── save Quick Analyze result ─────────
+async function saveQuickToArchive() {
+  if (!state.pendingQuickResult) return;
+  if (!state.signedIn) {
+    closeSignInModal(); // just in case
+    openSignInModal();
+    $('signInResult').classList.remove('hidden');
+    $('signInResult').textContent = t('signin_required');
+    return;
+  }
+  const r = state.pendingQuickResult;
+  showLoading();
+  try {
+    await api('POST', '/api/manual-entries', {
+      sender: r.sender || '',
+      company: r.company || '',
+      subject: r.subject || '',
+      summary: r.summary || '',
+      action_items: r.action_items || '',
+      source_kind: 'quick',
+    });
+    showToast(t('saved_to_archive'));
+    await refreshAll();
+    $('quickModal').classList.add('hidden');
+  } catch (e) {
+    showToast(e.message || String(e), 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
 // ───────── wiring ─────────
 function wire() {
   document.querySelectorAll('.lang-btn').forEach((b) => {
@@ -1110,6 +1339,24 @@ function wire() {
     if (btn.dataset.act === 'delete-email')   deleteEmail(+btn.dataset.id);
   });
 
+  $('manualList').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-act="del-manual"]');
+    if (!btn) return;
+    deleteManual(+btn.dataset.id);
+  });
+
+  $('signInBtn').addEventListener('click', openSignInModal);
+  $('signInClose').addEventListener('click', closeSignInModal);
+  $('signInModal').addEventListener('click', (e) => {
+    if (e.target.id === 'signInModal') closeSignInModal();
+  });
+  $('signInGo').addEventListener('click', requestMagicLink);
+  $('signInEmail').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') requestMagicLink();
+  });
+  $('signOutBtn').addEventListener('click', signOut);
+  $('quickSave').addEventListener('click', saveQuickToArchive);
+
   // ───── quick analyze modal ─────
   const quickState = { mode: 'upload', files: [] };
 
@@ -1187,6 +1434,7 @@ function wire() {
       const r = await fetch('/api/analyze', { method: 'POST', body: fd });
       const data = await r.json();
       if (!r.ok) throw new Error(data.detail || r.statusText);
+      state.pendingQuickResult = data;
       $('quickResSubject').textContent = data.subject || '—';
       $('quickResSender').textContent = data.sender || '—';
       $('quickResCompany').textContent = data.company || '—';
