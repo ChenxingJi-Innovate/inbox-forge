@@ -148,6 +148,17 @@
       <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold" data-i18n="sync_kicker"></div>
       <div class="text-200 font-semibold text-cosmicore" data-i18n="sync_h"></div>
     </div>
+
+    <!-- Date presets -->
+    <div class="flex flex-wrap gap-200 mb-400 text-100">
+      <button class="date-preset px-300 py-100 rounded-pill bg-roboflow-100 text-roboflow-700 font-semibold hover:bg-cosmicore hover:text-mochimalist transition-colors" data-days="0" data-i18n="preset_today"></button>
+      <button class="date-preset px-300 py-100 rounded-pill bg-roboflow-100 text-roboflow-700 font-semibold hover:bg-cosmicore hover:text-mochimalist transition-colors" data-days="1" data-i18n="preset_1d"></button>
+      <button class="date-preset px-300 py-100 rounded-pill bg-roboflow-100 text-roboflow-700 font-semibold hover:bg-cosmicore hover:text-mochimalist transition-colors" data-days="3" data-i18n="preset_3d"></button>
+      <button class="date-preset px-300 py-100 rounded-pill bg-roboflow-100 text-roboflow-700 font-semibold hover:bg-cosmicore hover:text-mochimalist transition-colors" data-days="7" data-i18n="preset_7d"></button>
+      <button class="date-preset px-300 py-100 rounded-pill bg-roboflow-100 text-roboflow-700 font-semibold hover:bg-cosmicore hover:text-mochimalist transition-colors" data-days="30" data-i18n="preset_30d"></button>
+      <button id="datePresetClear" class="px-300 py-100 rounded-pill bg-mochimalist text-roboflow-500 hover:text-pushpin-450 transition-colors" data-i18n="preset_clear"></button>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-5 gap-300 items-end">
       <div>
         <label class="block text-100 text-roboflow-500 font-semibold mb-100" data-i18n="sync_since"></label>
@@ -177,7 +188,6 @@
         </div>
       </div>
     </div>
-    <p class="mt-300 text-100 text-roboflow-400 leading-relaxed" data-i18n="sync_hint"></p>
   </div>
 
   <div class="grid gap-500" style="grid-template-columns: 360px 1fr;">
@@ -410,7 +420,12 @@ const I18N = {
     sync_keyword: '关键词 (可选)',
     sync_limit: '邮件数量上限',
     sync_go: '同步',
-    sync_hint: '不填日期 = 不限。关键词支持 Gmail 搜索语法 (例如 from:acme.com 或 subject:合同)。Outlook 搜索时其他过滤器会被忽略。',
+    preset_today: '今天',
+    preset_1d: '近 1 天',
+    preset_3d: '近 3 天',
+    preset_7d: '近 1 周',
+    preset_30d: '近 1 月',
+    preset_clear: '清空日期',
     search_placeholder: '搜索联系人/公司/邮箱...',
     sort_recent: '最近往来',
     sort_name: 'A-Z 姓名',
@@ -478,7 +493,12 @@ const I18N = {
     sync_keyword: 'Keyword (optional)',
     sync_limit: 'Max emails',
     sync_go: 'Sync',
-    sync_hint: 'Leave dates blank for no bound. Keyword accepts Gmail search syntax (e.g. from:acme.com, subject:contract). Outlook ignores other filters when a keyword is provided.',
+    preset_today: 'Today',
+    preset_1d: 'Last 1 day',
+    preset_3d: 'Last 3 days',
+    preset_7d: 'Last 7 days',
+    preset_30d: 'Last 30 days',
+    preset_clear: 'Clear dates',
     search_placeholder: 'Search contacts / company / email...',
     sort_recent: 'Latest',
     sort_name: 'A-Z name',
@@ -650,6 +670,26 @@ function _companyDisplay(group) {
   return root ? root.charAt(0).toUpperCase() + root.slice(1) : '(unknown)';
 }
 
+// Stable per-company color so the two Handshakes (or any same-company
+// contacts) are visually obvious even in "最近往来" sort where they're not
+// physically grouped. Hash the eTLD+1 key into a small palette.
+const COMPANY_PALETTE = [
+  { bg: '#FFE0E0', fg: '#9B0000' },  // red
+  { bg: '#DFEEFF', fg: '#0F4C8A' },  // blue
+  { bg: '#E0F2E9', fg: '#0F6B3E' },  // green
+  { bg: '#FFF1D6', fg: '#8A5500' },  // amber
+  { bg: '#EFE0FF', fg: '#5B2F8C' },  // purple
+  { bg: '#FFE0F2', fg: '#9C0F62' },  // pink
+  { bg: '#D6F3F1', fg: '#0A6E68' },  // teal
+  { bg: '#F0E6D6', fg: '#5A4A2B' },  // sand
+];
+function companyColor(key) {
+  if (!key) return { bg: '#F1F1F1', fg: '#4A4A4A' };
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = ((h << 5) - h + key.charCodeAt(i)) | 0;
+  return COMPANY_PALETTE[Math.abs(h) % COMPANY_PALETTE.length];
+}
+
 function _sortKey(c) {
   if (state.sort === 'name')    return (c.name || c.email || '').toLowerCase();
   if (state.sort === 'company') return _companyKey(c);
@@ -713,15 +753,20 @@ function renderContactList() {
     const stageDisplayText = stageLabel || t('new_contact');
     const preview = c.current_topic || c.rolling_summary || '';
     const active = c.id === state.selectedId;
+    const cKey = _companyKey(c);
+    const cName = _companyDisplay([c]);
+    const col = companyColor(cKey);
     return `
-      <button class="contact-row w-full text-left ${indented ? 'pl-500 pr-400' : 'px-400'} py-400 rounded-400 hover:bg-roboflow-50 transition-colors duration-300 ease-apple"
-              data-id="${c.id}" data-active="${active}">
+      <button class="contact-row w-full text-left ${indented ? 'pl-500 pr-400' : 'px-400'} py-400 rounded-400 hover:bg-roboflow-50 transition-colors duration-300 ease-apple relative"
+              data-id="${c.id}" data-active="${active}"
+              style="border-left: 3px solid ${col.bg};">
         <div class="flex items-center justify-between gap-300">
           <div class="font-semibold truncate">${escapeHtml(c.name || c.email)}</div>
           <span class="stage-pill ${stageCls}">${escapeHtml(stageDisplayText)}</span>
         </div>
-        <div class="row-meta text-100 text-roboflow-500 mt-100 truncate">
-          ${escapeHtml(c.email)} · ${escapeHtml(t('last_seen', { t: relTime(c.last_seen_at) }))}
+        <div class="row-meta text-100 text-roboflow-500 mt-100 flex items-center gap-200 truncate">
+          <span class="company-chip" style="background:${col.bg};color:${col.fg};font-size:11px;padding:1px 8px;border-radius:999px;font-weight:600;white-space:nowrap;">${escapeHtml(cName)}</span>
+          <span class="truncate">${escapeHtml(c.email)} · ${escapeHtml(t('last_seen', { t: relTime(c.last_seen_at) }))}</span>
         </div>
         ${preview ? `<div class="row-preview text-100 text-roboflow-600 mt-200 line-clamp-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(preview)}</div>` : ''}
       </button>`;
@@ -973,6 +1018,29 @@ function wire() {
   });
 
   $('syncGo').addEventListener('click', sweepAll);
+
+  // Date presets. `new Date()` returns the browser's local time, so this
+  // uses whichever timezone the user is in (no server round-trip needed).
+  const ymd = (d) => {
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+  };
+  document.querySelectorAll('.date-preset').forEach((b) => {
+    b.addEventListener('click', () => {
+      const back = parseInt(b.dataset.days, 10);
+      const end = new Date();
+      const start = new Date();
+      start.setDate(end.getDate() - back);
+      $('syncSince').value = ymd(start);
+      $('syncUntil').value = ymd(end);
+    });
+  });
+  $('datePresetClear').addEventListener('click', () => {
+    $('syncSince').value = '';
+    $('syncUntil').value = '';
+  });
 
   $('contactList').addEventListener('click', (e) => {
     const row = e.target.closest('.contact-row');
