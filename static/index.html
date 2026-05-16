@@ -120,9 +120,10 @@
 
 <!-- ──────────── EMPTY STATE (no connections + no contacts) ──────────── -->
 <div id="emptyState" class="relative z-10 hidden max-w-3xl mx-auto px-600 pt-1200 pb-1200 animate-fadeUp">
-  <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold mb-300" data-i18n="local_badge"></div>
+  <div class="text-100 text-pushpin-450 tracking-widest uppercase font-semibold mb-300" data-i18n="hero_kicker"></div>
   <h1 class="display-h1 text-cosmicore" data-i18n-html="hero_title"></h1>
   <p class="mt-500 text-300 text-roboflow-600 max-w-xl" data-i18n="hero_sub"></p>
+
   <div class="mt-700 flex flex-col sm:flex-row gap-300">
     <button class="hero-google flex-1 inline-flex items-center justify-center gap-300 bg-mochimalist py-400 rounded-pill font-semibold text-200 shadow-floating hover:-translate-y-0.5 hover:shadow-raised transition-all duration-500 ease-apple">
       <svg class="w-500 h-500" viewBox="0 0 24 24"><path fill="#4285F4" d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 16.25 5 12c0-4.1 3.2-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81z"/></svg>
@@ -133,7 +134,19 @@
       <span data-i18n="connect_outlook"></span>
     </button>
   </div>
-  <p class="mt-500 text-100 text-roboflow-400 leading-relaxed" data-i18n="local_promise"></p>
+
+  <!-- Quick Analyze: secondary CTA, no sign-in required -->
+  <div class="mt-600 flex items-center gap-400 text-100 text-roboflow-400">
+    <span class="h-px flex-1 bg-roboflow-200"></span>
+    <span data-i18n="hero_or"></span>
+    <span class="h-px flex-1 bg-roboflow-200"></span>
+  </div>
+  <button id="heroQuick" class="mt-400 w-full inline-flex items-center justify-center gap-300 bg-mochimalist/40 py-400 rounded-pill font-semibold text-200 text-roboflow-700 hover:text-cosmicore hover:-translate-y-0.5 hover:bg-pushpin-0 transition-all duration-500 ease-apple" style="box-shadow: inset 0 0 0 1.5px #CDCDCD;">
+    <svg class="w-400 h-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
+    <span data-i18n="hero_quick_label"></span>
+  </button>
+
+  <p class="mt-600 text-100 text-roboflow-400 leading-relaxed" data-i18n="hero_safety"></p>
 </div>
 
 <!-- ──────────── MAIN: TWO-PANE ──────────── -->
@@ -239,7 +252,7 @@
   </div>
 </div>
 
-<!-- ──────────── QUICK ANALYZE MODAL (stateless, Gemini vision) ──────────── -->
+<!-- ──────────── QUICK ANALYZE MODAL (stateless, vision LLM) ──────────── -->
 <div id="quickModal" class="hidden fixed inset-0 bg-cosmicore/40 backdrop-blur-md z-40 flex items-start justify-center overflow-y-auto p-600">
   <div class="bg-mochimalist rounded-600 shadow-lift w-full max-w-2xl my-1000 animate-fadeUp">
     <div class="flex items-center justify-between p-600 border-b border-roboflow-100">
@@ -378,10 +391,12 @@ const I18N = {
     tagline: '本地档案 · AI 摘要',
     connect_gmail: '连接 Gmail',
     connect_outlook: '连接 Outlook',
-    local_badge: '本地优先 · 你的数据不离开这台机器',
-    hero_title: '把每封邮件,<br>沉淀成<span class="font-display italic text-pushpin-450">人</span>的档案。',
-    hero_sub: '连接你的邮箱后,Gemini 会自动总结每封邮件,并按发件人归档。每次新邮件来,档案会滚动更新,不会失忆。',
-    local_promise: '所有数据存在 ~/.inbox-forge/data.db。OAuth token 加密保存。需要时随时清空。',
+    hero_kicker: 'AI 邮件助手 · 按账号隔离',
+    hero_title: 'AI 邮件摘要,<br>按<span class="font-display italic text-pushpin-450">联系人</span>归档。',
+    hero_sub: '连接 Gmail 或 Outlook,LLM 自动为每封邮件生成摘要,归入对应联系人的滚动档案。新邮件持续更新档案,不重复总结。',
+    hero_or: '或',
+    hero_quick_label: '不连邮箱,快速解析单封邮件',
+    hero_safety: '我们只读取邮件元数据和正文用于生成摘要,不会发送或修改你的邮箱。OAuth token 加密存储,每个账号的数据相互隔离,可随时退出并清空。',
     contacts_kicker: '联系人',
     contacts_empty: '尚无联系人。点击右上角「同步」从邮箱拉取未读邮件,系统会自动归档。',
     select_hint: '从左侧选一位联系人,查看档案与历史邮件。',
@@ -438,7 +453,7 @@ const I18N = {
     quick_analyze: '快速解析',
     quick_kicker: '一次性 · 不入档',
     quick_h: '快速解析单封邮件',
-    quick_sub: '上传截图 (Gemini 视觉) 或粘贴正文,30 秒拿到结构化摘要。结果只显示,不写入联系人档案。',
+    quick_sub: '上传截图或粘贴正文,LLM 在 30 秒内给出结构化摘要。结果只显示,不会写入任何联系人档案。',
     quick_mode_upload: '截图',
     quick_mode_text: '粘贴文字',
     quick_drop_main: '点击或拖拽截图到这里',
@@ -454,10 +469,12 @@ const I18N = {
     tagline: 'Local-first · AI dossiers',
     connect_gmail: 'Connect Gmail',
     connect_outlook: 'Connect Outlook',
-    local_badge: 'Local-first · your data never leaves this machine',
-    hero_title: 'Every email,<br>distilled into a <span class="font-display italic text-pushpin-450">person.</span>',
-    hero_sub: 'Connect your inbox and Gemini summarizes every email, filed by sender. Each new email rolls into a living dossier, so context never gets lost.',
-    local_promise: 'All data lives in ~/.inbox-forge/data.db. OAuth tokens encrypted at rest. Wipe anytime.',
+    hero_kicker: 'AI Email Assistant · Per-account isolated',
+    hero_title: 'AI email summaries,<br>filed by <span class="font-display italic text-pushpin-450">contact.</span>',
+    hero_sub: "Connect Gmail or Outlook. An LLM summarizes every email and files it into the right contact's rolling dossier. New mail keeps the dossier current, no resummarizing.",
+    hero_or: 'or',
+    hero_quick_label: 'Skip sign-in, quick-analyze a single email',
+    hero_safety: 'We only read email metadata and bodies to generate summaries, never sending mail or modifying your inbox. OAuth tokens are encrypted at rest, every account is isolated from every other, and you can sign out anytime to wipe.',
     contacts_kicker: 'Contacts',
     contacts_empty: 'No contacts yet. Hit Sync above to pull unread mail and auto-file.',
     select_hint: 'Pick a contact on the left to see their dossier and timeline.',
@@ -514,7 +531,7 @@ const I18N = {
     quick_analyze: 'Quick analyze',
     quick_kicker: 'One-shot · not filed',
     quick_h: 'Quick analyze a single email',
-    quick_sub: 'Upload screenshots (Gemini vision) or paste body text, get a structured summary in ~30 sec. Results display only, nothing is written into the contact archive.',
+    quick_sub: 'Upload screenshots or paste body text. An LLM returns a structured summary in ~30 sec. Display-only, nothing written into any contact archive.',
     quick_mode_upload: 'Screenshot',
     quick_mode_text: 'Paste text',
     quick_drop_main: 'Click or drop screenshots here',
@@ -1119,14 +1136,17 @@ function wire() {
       </div>`).join('');
   };
 
-  $('openQuick').addEventListener('click', () => {
+  const openQuickModal = () => {
     setQuickMode('upload');
     quickState.files = [];
     $('quickText').value = '';
     $('quickResult').classList.add('hidden');
     renderQuickThumbs();
     $('quickModal').classList.remove('hidden');
-  });
+  };
+  $('openQuick').addEventListener('click', openQuickModal);
+  const heroQuick = $('heroQuick');
+  if (heroQuick) heroQuick.addEventListener('click', openQuickModal);
   $('quickClose').addEventListener('click', () => $('quickModal').classList.add('hidden'));
   $('quickModal').addEventListener('click', (e) => {
     if (e.target.id === 'quickModal') $('quickModal').classList.add('hidden');
