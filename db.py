@@ -98,8 +98,17 @@ def _turso():
     global _turso_client
     if _turso_client is None:
         import libsql_client  # type: ignore
+        # Force the HTTPS Hrana API. The default libsql:// scheme makes the
+        # client try a WebSocket connection, which dies on serverless (Vercel
+        # cold starts can't hold WS), and on Python 3.14 + aiohttp the WSS
+        # handshake itself returns HTTP 505 against Turso edges. The HTTP API
+        # is stateless, request-scoped, and the official recommendation for
+        # any FaaS deployment.
+        url = os.environ["TURSO_DATABASE_URL"]
+        if url.startswith("libsql://"):
+            url = "https://" + url[len("libsql://"):]
         _turso_client = libsql_client.create_client_sync(
-            url=os.environ["TURSO_DATABASE_URL"],
+            url=url,
             auth_token=os.environ.get("TURSO_AUTH_TOKEN"),
         )
     return _turso_client
