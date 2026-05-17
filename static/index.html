@@ -782,33 +782,110 @@ function renderSyncPanel() {
   $('syncKeyword').placeholder = state.lang === 'zh' ? 'from:acme.com 或 subject:合同' : 'from:acme.com or subject:contract';
 }
 
-// Email-domain helpers for grouping. eTLD+1 = "joinhandshake.com" for both
-// "handshake@g.joinhandshake.com" and "handshake@notifications.joinhandshake.com".
-// We take the last two dot-components which is fine for *.com/.net/.org/.io
-// and only mis-groups exotic suffixes like *.co.uk, which we accept as a
-// known limitation.
+// Email-domain → company normalization.
+//
+// Goals:
+//   1. Group sibling subdomains together. `handshake@g.joinhandshake.com` and
+//      `handshake@notifications.joinhandshake.com` should share one company.
+//   2. Display the human-recognizable brand, not the literal registrable
+//      domain. "Joinhandshake" / "Slackhq" become "Handshake" / "Slack".
+//
+// Strategy: strip well-known "noisy" subdomain prefixes (mail, notifications,
+// no-reply, g, em, ...), then look the result up in a small known-brand map;
+// fall back to "registrable + Title Case" with light cosmetic rules
+// (strip "join" prefix, "hq" suffix, "app" suffix).
 function _domainOf(email) {
   const at = (email || '').lastIndexOf('@');
   return at >= 0 ? (email || '').slice(at + 1).toLowerCase() : '';
 }
-function _companyKey(c) {
-  const d = _domainOf(c.email);
-  if (!d) return '~';
-  const parts = d.split('.');
-  return parts.slice(-2).join('.');
+
+// Subdomains that are bulk-mail infra noise, not the real company root.
+const NOISY_SUBDOMAINS = new Set([
+  'mail', 'mails', 'email', 'emails', 'mailer', 'mailers',
+  'notifications', 'notification', 'notify', 'alerts', 'alert',
+  'no-reply', 'noreply', 'reply', 'replies', 'send', 'sender',
+  'updates', 'update', 'newsletter', 'news', 'auto', 'autoreply',
+  'em', 'e', 'm', 'g', 'bounce', 'bounces', 'transactional',
+  'smtp', 'inbound', 'inboundmail', 'mta',
+]);
+
+// Hand-curated rename map for the registrable domains that DON'T cleanly
+// reduce to their brand name via mechanical rules. Add freely.
+const KNOWN_BRANDS = {
+  'joinhandshake.com':     { key: 'handshake',  display: 'Handshake' },
+  'slackhq.com':           { key: 'slack',      display: 'Slack' },
+  'github.com':            { key: 'github',     display: 'GitHub' },
+  'githubusercontent.com': { key: 'github',     display: 'GitHub' },
+  'githubapp.com':         { key: 'github',     display: 'GitHub' },
+  'googlemail.com':        { key: 'google',     display: 'Google' },
+  'google.com':            { key: 'google',     display: 'Google' },
+  'gmail.com':             { key: 'gmail',      display: 'Gmail' },
+  'outlook.com':           { key: 'outlook',    display: 'Outlook' },
+  'hotmail.com':           { key: 'outlook',    display: 'Outlook' },
+  'live.com':              { key: 'outlook',    display: 'Outlook' },
+  'icloud.com':            { key: 'icloud',     display: 'iCloud' },
+  'qq.com':                { key: 'qq',         display: 'QQ' },
+  '163.com':               { key: 'netease',    display: 'Netease' },
+  '126.com':               { key: 'netease',    display: 'Netease' },
+  'amazonses.com':         { key: 'amazonses',  display: 'Amazon SES' },
+  'sendgrid.net':          { key: 'sendgrid',   display: 'SendGrid' },
+  'mailgun.org':           { key: 'mailgun',    display: 'Mailgun' },
+  'mailgun.net':           { key: 'mailgun',    display: 'Mailgun' },
+  'mailchimp.com':         { key: 'mailchimp',  display: 'Mailchimp' },
+  'youtube.com':           { key: 'youtube',    display: 'YouTube' },
+  'linkedin.com':          { key: 'linkedin',   display: 'LinkedIn' },
+  'apple.com':             { key: 'apple',      display: 'Apple' },
+  'meta.com':              { key: 'meta',       display: 'Meta' },
+  'facebookmail.com':      { key: 'meta',       display: 'Meta' },
+};
+
+function _stripNoise(domain) {
+  let parts = domain.split('.');
+  while (parts.length > 2 && NOISY_SUBDOMAINS.has(parts[0])) parts = parts.slice(1);
+  return parts.join('.');
 }
+
+function _companyMeta(email) {
+  // Returns { key, display }. `key` is a stable id used for grouping AND for
+  // the color palette hash; `display` is the human-friendly company name.
+  const d = _domainOf(email);
+  if (!d) return { key: '~', display: '(unknown)' };
+  const cleaned = _stripNoise(d);
+  if (KNOWN_BRANDS[cleaned]) return KNOWN_BRANDS[cleaned];
+  // Registrable = last 2 segments. Good enough for *.com/.net/.org/.io;
+  // misses *.co.uk, which we accept as a known limitation.
+  const reg = cleaned.split('.').slice(-2).join('.');
+  if (KNOWN_BRANDS[reg]) return KNOWN_BRANDS[reg];
+  // Generic cosmetic cleanup on the bare name.
+  let root = reg.split('.')[0] || '';
+  if (root.startsWith('join') && root.length > 6) root = root.slice(4);   // joinhandshake → handshake
+  if (root.endsWith('hq')   && root.length > 4) root = root.slice(0, -2); // slackhq → slack
+  if (root.endsWith('app')  && root.length > 5) root = root.slice(0, -3); // notionapp → notion
+  return {
+    key: root || reg,
+    display: root ? root.charAt(0).toUpperCase() + root.slice(1) : reg,
+  };
+}
+
+function _companyKey(c) { return _companyMeta(c.email).key; }
 function _companyDisplay(group) {
-  // Prefer the most-common non-empty extracted company name; fallback to a
-  // capitalized root of the registrable domain so the header is never empty.
+  // Honor the LLM-extracted company name when it's non-empty AND looks like a
+  // real brand (not just the raw "Joinhandshake"-style domain echo). We
+  // detect "domain echo" by checking whether the extracted name equals the
+  // normalized root or its capitalized form.
+  const meta = _companyMeta(group[0].email);
   const counts = {};
   for (const c of group) {
     const name = (c.company || '').trim();
-    if (name) counts[name] = (counts[name] || 0) + 1;
+    if (!name) continue;
+    const low = name.toLowerCase().replace(/\s+/g, '');
+    // skip if the LLM just echoed the raw registrable domain segment
+    if (low === meta.key || low === _companyKey(c)) continue;
+    counts[name] = (counts[name] || 0) + 1;
   }
   const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   if (sorted.length) return sorted[0][0];
-  const root = (_companyKey(group[0]) || '').split('.')[0];
-  return root ? root.charAt(0).toUpperCase() + root.slice(1) : '(unknown)';
+  return meta.display;
 }
 
 // Stable per-company color so the two Handshakes (or any same-company
@@ -949,6 +1026,25 @@ function renderContactList() {
           </div>
         </div>`;
       for (const c of grp) html += rowHtml(c, /*indented*/ true);
+    }
+  } else if (state.sort === 'recent') {
+    // "Latest" view: still time-ordered, but rows that share a company stay
+    // physically adjacent. Group sort key = the group's most-recent activity,
+    // so a fresh email from any group member can promote the whole group.
+    const order = [];                // sequence of group keys in display order
+    const groups = new Map();
+    for (const c of arr) {
+      const k = _companyKey(c);
+      if (!groups.has(k)) { groups.set(k, []); order.push(k); }
+      groups.get(k).push(c);
+    }
+    // order[] already follows `arr` recency (since arr is recency-sorted and a
+    // new group key is appended on first sighting = its most-recent member).
+    for (const k of order) {
+      const grp = groups.get(k);
+      // sort within group by recency desc (probably already, but be safe)
+      grp.sort((x, y) => (y.last_seen_at || '').localeCompare(x.last_seen_at || ''));
+      for (const c of grp) html += rowHtml(c, /*indented*/ false);
     }
   } else {
     for (const c of arr) {
