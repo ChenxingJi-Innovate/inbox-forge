@@ -1028,23 +1028,32 @@ function renderContactList() {
       for (const c of grp) html += rowHtml(c, /*indented*/ true);
     }
   } else if (state.sort === 'recent') {
-    // "Latest" view: still time-ordered, but rows that share a company stay
-    // physically adjacent. Group sort key = the group's most-recent activity,
-    // so a fresh email from any group member can promote the whole group.
-    const order = [];                // sequence of group keys in display order
+    // "Latest" view: same grouped layout as "A-Z company" — every group has a
+    // company header card showing "Display name · N contacts · M emails" —
+    // but groups are ordered by their most-recent activity instead of
+    // alphabetically. A fresh email from any group member promotes the
+    // entire cluster to the top.
+    const order = [];                // group keys in display order
     const groups = new Map();
     for (const c of arr) {
       const k = _companyKey(c);
       if (!groups.has(k)) { groups.set(k, []); order.push(k); }
       groups.get(k).push(c);
     }
-    // order[] already follows `arr` recency (since arr is recency-sorted and a
-    // new group key is appended on first sighting = its most-recent member).
+    // arr is already recency-sorted, so order[] naturally follows group recency.
     for (const k of order) {
       const grp = groups.get(k);
-      // sort within group by recency desc (probably already, but be safe)
       grp.sort((x, y) => (y.last_seen_at || '').localeCompare(x.last_seen_at || ''));
-      for (const c of grp) html += rowHtml(c, /*indented*/ false);
+      const displayName = _companyDisplay(grp);
+      const totalEmails = grp.reduce((acc, c) => acc + (c.total_emails || 0), 0);
+      html += `
+        <div class="px-300 pt-300 pb-100 mt-200 flex items-baseline justify-between gap-200">
+          <div class="text-200 font-semibold text-cosmicore truncate">${escapeHtml(displayName)}</div>
+          <div class="text-100 text-roboflow-400 whitespace-nowrap">
+            ${escapeHtml(state.lang === 'zh' ? `${grp.length} 人 · ${totalEmails} 封` : `${grp.length} contact${grp.length > 1 ? 's' : ''} · ${totalEmails} email${totalEmails !== 1 ? 's' : ''}`)}
+          </div>
+        </div>`;
+      for (const c of grp) html += rowHtml(c, /*indented*/ true);
     }
   } else {
     for (const c of arr) {
