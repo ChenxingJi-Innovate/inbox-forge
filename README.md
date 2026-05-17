@@ -1,21 +1,22 @@
 # Inbox Forge
 
-Local-first AI email assistant. Connect Gmail or Outlook, and Gemini builds a rolling per-contact dossier from every email. Each new message updates the dossier in place, so context never gets lost.
+Local-first, per-contact AI email assistant. Connect Gmail or Outlook (or paste a screenshot for one-shot analysis) and the LLM stack — DeepSeek V4-Flash for text, Qwen3-VL-Plus for vision — builds a rolling dossier for every contact you talk to. New mail keeps the dossier current; old summaries don't get rewritten.
 
-- One Vercel deploy = your personal cloud instance
+- One Vercel deploy = your personal cloud instance, data scoped to your session
 - Or `python3 main.py` locally and everything lives in `~/.inbox-forge/data.db`
+- Bilingual (zh / en), magic-link sign-in optional, OAuth 2.0 for inbox connections
 
 ## One-click deploy
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR_USERNAME/email-summarizer&env=DEEPSEEK_API_KEY,VISION_API_KEY,VISION_BASE_URL,VISION_MODEL,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APP_BASE_URL,TOKEN_ENC_KEY,TURSO_DATABASE_URL,TURSO_AUTH_TOKEN)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ChenxingJi-Innovate/inbox-forge&env=DEEPSEEK_API_KEY,VISION_API_KEY,VISION_BASE_URL,VISION_MODEL,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,APP_BASE_URL,TOKEN_ENC_KEY,TURSO_DATABASE_URL,TURSO_AUTH_TOKEN)
 
-> Replace `YOUR_USERNAME` with your GitHub username after forking. Each fork = one personal instance.
+> Fork first, then change the repo path in the Deploy button above to your own fork. Each fork = one personal instance.
 
-### 4 keys to grab (about 10 minutes total)
+### 5 keys to grab (about 10 minutes total)
 
 | # | What | Where | How long |
 |---|---|---|---|
-| 1 | `DEEPSEEK_API_KEY` | https://platform.deepseek.com → API keys. Drives the main dossier pipeline (default model `deepseek-v4-flash`). Top up ~$5, lasts months. | 2 min |
+| 1 | `DEEPSEEK_API_KEY` | https://platform.deepseek.com → API keys. Drives the dossier pipeline (default model `deepseek-v4-flash`). Top up ~$5, lasts months. | 2 min |
 | 2 | `VISION_API_KEY` | https://bailian.console.aliyun.com → API-Key 管理. Drives the Quick Analyze screenshot path via Qwen3-VL-Plus (default). New users get 1M free tokens. | 2 min |
 | 3 | `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` | https://console.cloud.google.com → APIs & Services → Credentials → Create OAuth client ID (Web app). Add `https://YOUR-PROJECT.vercel.app/api/auth/google/callback` as Authorized redirect URI. Also enable the Gmail API. | 5 min |
 | 4 | `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` | https://turso.tech → sign up with GitHub → `turso db create inbox-forge` → `turso db show inbox-forge --url` and `turso db tokens create inbox-forge` | 2 min |
@@ -25,7 +26,7 @@ Optional, only if you want Outlook too:
 
 | # | What | Where |
 |---|---|---|
-| 5 | `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET` | https://entra.microsoft.com → App registrations → New. Redirect URI: `https://YOUR-PROJECT.vercel.app/api/auth/microsoft/callback`. Permission: `Mail.Read` (delegated). |
+| 6 | `MICROSOFT_CLIENT_ID` + `MICROSOFT_CLIENT_SECRET` | https://entra.microsoft.com → App registrations → New. Redirect URI: `https://YOUR-PROJECT.vercel.app/api/auth/microsoft/callback`. Permission: `Mail.Read` (delegated). |
 
 Paste them into the Vercel deploy form, hit Deploy, done.
 
@@ -47,20 +48,36 @@ To wipe everything: `rm -rf ~/.inbox-forge`.
 ## How it works
 
 ```
-Gmail/Outlook unread  →  dedupe by message_id
-                      →  upsert contact (by from address)
-                      →  fetch contact's existing dossier + last 5 summaries
-                      →  Gemini: summarize this email + rewrite the dossier
-                      →  store summary + overwrite dossier
+Gmail / Outlook (OAuth, time-range or unread-only sync)
+        │
+        ▼
+dedupe by (provider, message_id)
+        │
+        ▼
+upsert contact (by `from` address, grouped by normalized company)
+        │
+        ▼
+fetch existing dossier + last 5 per-contact summaries
+        │
+        ▼
+DeepSeek V4-Flash → new email summary + rewrite of rolling dossier
+        │
+        ▼
+store summary; overwrite dossier in place; update relationship stage
 ```
 
-The dossier rolls forward every email, so context accumulates without unbounded growth.
+Two parallel pipelines:
+
+- **Connected inbox** path: OAuth tokens, scheduled sweeps, per-contact rolling dossiers (DeepSeek V4-Flash, text only).
+- **Quick Analyze** path: drop a screenshot or paste a body, one-shot structured summary, optionally pinned to the manual archive (Qwen3-VL-Plus via DashScope; OpenAI-compatible).
+
+The dossier rolls forward on every email, so context accumulates without unbounded prompt growth.
 
 ## Env vars summary
 
 | Var | Required | Notes |
 |---|---|---|
-| `DEEPSEEK_API_KEY` | yes | DeepSeek-V4-Flash drives the dossier pipeline (`/api/inbox/{id}/sweep`) |
+| `DEEPSEEK_API_KEY` | yes | DeepSeek V4-Flash drives the dossier pipeline (`/api/inbox/{id}/sweep`) |
 | `VISION_API_KEY` | yes | Qwen3-VL-Plus on DashScope drives the Quick Analyze screenshot path (`/api/analyze`). OpenAI-compatible; swap providers by changing `VISION_BASE_URL` + `VISION_MODEL`. |
 | `VISION_BASE_URL` | yes | Default `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | `VISION_MODEL` | yes | Default `qwen3-vl-plus` |
